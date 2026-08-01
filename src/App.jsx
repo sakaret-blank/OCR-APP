@@ -1,5 +1,44 @@
-  
-  try {
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  Database,
+  Download,
+  Droplets,
+  Eye,
+  EyeOff,
+  Loader2,
+  Moon,
+  Printer,
+  Save,
+  ScanLine,
+  Sparkles,
+  Sun,
+  Table as TableIcon,
+  Thermometer,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
+
+const WORKER_API_URL = 'https://ocr-api.sakaretblank.workers.dev';
+const LOCAL_STORAGE_KEY = 'drying_process_history_v3';
+
+// ดึง JSON ออกจากข้อความตอบกลับ แม้ AI จะครอบด้วย Markdown code fence
+const parseSafeJson = (text) => {
+  if (!text) {
+    throw new Error('ไม่พบข้อมูลตอบกลับจากเซิร์ฟเวอร์');
+  }
+
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+
+try {
     return JSON.parse(cleaned);
   } catch (e) {
     const start = cleaned.indexOf('{');
@@ -278,7 +317,8 @@ export default function App() {
   };
 
   const currentFilteredData = getFilteredDataForShift();
-  const resolvedProductTypes = resolveProductTypesList(currentFilteredData);
+  const resolvedAllProductTypes = resolveProductTypesList(data);
+  const resolvedFilteredProductTypes = resolveProductTypesList(currentFilteredData);
 
   const calculateAnalytics = (dataset) => {
     let totalWet = 0, wetCount = 0;
@@ -289,7 +329,7 @@ export default function App() {
     const anomalies = [];
 
     dataset.forEach((row, idx) => {
-      const pType = resolvedProductTypes[idx] || row.productType || '-';
+      const pType = resolvedFilteredProductTypes[idx] || row.productType || '-';
 
       const tempIn = parseFloat(row.hotAirIn);
       if (!isNaN(tempIn)) { 
@@ -502,7 +542,7 @@ export default function App() {
                     </thead>
                     <tbody className="text-slate-800">
                       {data.map((row, index) => {
-                        const resolvedType = resolvedProductTypes[index];
+                        const resolvedType = resolvedAllProductTypes[index];
                         const isDitto = row.productType === '"' || row.productType === '〃' || row.productType === "''";
 
                         return (
@@ -631,7 +671,7 @@ export default function App() {
                           {analytics.avgTempIn} °C
                         </span>
                       </div>
-                      <ChartHotAirIn dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
+                      <ChartHotAirIn dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -646,7 +686,7 @@ export default function App() {
                           {analytics.avgTempOut} °C
                         </span>
                       </div>
-                      <ChartHotAirOut dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
+                      <ChartHotAirOut dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -661,7 +701,7 @@ export default function App() {
                           {analytics.avgWetMoist} %
                         </span>
                       </div>
-                      <ChartWetMoisture dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
+                      <ChartWetMoisture dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -676,7 +716,7 @@ export default function App() {
                           {analytics.avgProdMoist} %
                         </span>
                       </div>
-                      <ChartProdMoisture dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
+                      <ChartProdMoisture dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
                     </div>
 
                   </div>
