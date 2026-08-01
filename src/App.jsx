@@ -970,21 +970,85 @@ function ProcessChart({
           </g>
         ))}
 
-        {events.map(({ index, x, event }, eventIndex) => {
+        {events.map(({ index, x, event, minute }, eventIndex) => {
           const labelY = 14 + (eventIndex % 2) * 14;
-          const previous = findPreviousValid(events[eventIndex].minute);
-          const next = findNextValid(events[eventIndex].minute);
+          const previous = findPreviousValid(minute);
+          const next = findNextValid(minute);
           const isStopLike = ['stopDryer', 'powerOutage', 'machineStop'].includes(event.type);
           const isStart = event.type === 'startDryer';
+          const isTemperature = field === 'hotAirIn' || field === 'hotAirOut';
+          const isWetCake = field === 'wetCakeMoisture';
+          const isProduct = field === 'productMoisture';
+          const baselineY = height - padding.bottom;
+          const nextStart = isStopLike
+            ? events.find((candidate) => candidate.minute > minute && candidate.event.type === 'startDryer')
+            : null;
+          const coolingEndX = nextStart?.x ?? Math.min(getXFromMinute(minute + 60), width - padding.right);
+
           return <g key={`${index}-${event.label}-${event.time}`}>
-            {isStopLike && previous && previous.x < x && (
-              <line x1={previous.x} y1={previous.y} x2={x} y2={previous.y} stroke={lineColor} strokeWidth="3" strokeLinecap="round" />
+            {!isProduct && isStopLike && previous && previous.x < x && (
+              <line
+                x1={previous.x}
+                y1={previous.y}
+                x2={x}
+                y2={previous.y}
+                stroke={lineColor}
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
             )}
-            {isStart && next && x < next.x && (
-              <line x1={x} y1={height - padding.bottom} x2={next.x} y2={next.y} stroke={lineColor} strokeWidth="3" strokeLinecap="round" strokeDasharray="6 4" opacity="0.9" />
+
+            {isTemperature && isStopLike && previous && coolingEndX > x && (
+              <line
+                x1={x}
+                y1={previous.y}
+                x2={coolingEndX}
+                y2={baselineY}
+                stroke={lineColor}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray="6 4"
+                opacity="0.9"
+              />
             )}
-            <line x1={x} y1={padding.top} x2={x} y2={height - padding.bottom} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.95" />
-            <circle cx={x} cy={isStart ? height - padding.bottom : (previous?.y ?? height - padding.bottom)} r="3.5" fill="#0f172a" stroke={event.color} strokeWidth="2" />
+
+            {isWetCake && isStart && next && x < next.x && (
+              <line
+                x1={x}
+                y1={baselineY}
+                x2={next.x}
+                y2={next.y}
+                stroke={lineColor}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray="6 4"
+                opacity="0.9"
+              />
+            )}
+
+            {isTemperature && isStart && next && x < next.x && (
+              <line
+                x1={x}
+                y1={baselineY}
+                x2={next.x}
+                y2={next.y}
+                stroke={lineColor}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray="6 4"
+                opacity="0.9"
+              />
+            )}
+
+            <line x1={x} y1={padding.top} x2={x} y2={baselineY} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.95" />
+            <circle
+              cx={x}
+              cy={isProduct ? baselineY : (isStart ? baselineY : (previous?.y ?? baselineY))}
+              r="3.5"
+              fill="#0f172a"
+              stroke={event.color}
+              strokeWidth="2"
+            />
             <text x={Math.min(Math.max(x + 5, padding.left + 2), width - 125)} y={labelY} fill={event.color} fontSize="10" fontWeight="700">{event.label} {event.time}</text>
           </g>;
         })}
