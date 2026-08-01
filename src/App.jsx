@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Upload, FileText, BarChart3, Clock, Calendar, Sun, Moon, Printer, Save, Trash2, Database, AlertTriangle, CheckCircle2, Loader2, Table as TableIcon, Eye, EyeOff, X, ScanLine, Thermometer, Droplets, RefreshCw, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { 
+  Download, Upload, BarChart3, Clock, Calendar, Sun, Moon, 
+  Printer, Save, Trash2, Database, AlertTriangle, CheckCircle2, 
+  Loader2, Table as TableIcon, Eye, EyeOff, X, ScanLine, 
+  Thermometer, Droplets, Sparkles 
+} from 'lucide-react';
 
 const WORKER_API_URL = 'https://ocr-api.sakaretblank.workers.dev'; 
 const LOCAL_STORAGE_KEY = 'drying_process_history_v3';
@@ -391,7 +396,7 @@ export default function App() {
               <button 
                 onClick={autoFixDittoMarks}
                 className="px-2.5 py-1.5 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-100 text-xs font-semibold flex items-center"
-                title="เปลี่ยนเครื่องหมาย \" ให้กลายเป็นชื่อชนิดแป้งเต็ม"
+                title='เปลี่ยนเครื่องหมาย " ให้กลายเป็นชื่อชนิดแป้งเต็ม'
               >
                 <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-600" /> แปลงเครื่องหมายซ้ำ (")
               </button>
@@ -641,7 +646,7 @@ export default function App() {
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Thermometer className="w-4 h-4 mr-1.5 text-orange-500" /> 1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 140-160°C | เหลือง: <140°C หรือ ≥160°C | แดง: <130°C</p>
+                          <p className="text-[10px] text-slate-500">ปกติ: 140-160°C | เหลือง: &lt;140°C หรือ &ge;160°C | แดง: &lt;130°C</p>
                         </div>
                         <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
                           {analytics.avgTempIn} °C
@@ -673,7 +678,7 @@ export default function App() {
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Droplets className="w-4 h-4 mr-1.5 text-indigo-500" /> 3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 30% - 38% | เหลือง: <30% | แดง: >38%</p>
+                          <p className="text-[10px] text-slate-500">ปกติ: 30% - 38% | เหลือง: &lt;30% | แดง: &gt;38%</p>
                         </div>
                         <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                           {analytics.avgWetMoist} %
@@ -689,7 +694,7 @@ export default function App() {
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Droplets className="w-4 h-4 mr-1.5 text-blue-600" /> 4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 11.0-12.5% | เหลือง: 0-10.9% หรือ 12.5-14% | แดง: >14%</p>
+                          <p className="text-[10px] text-slate-500">ปกติ: 11.0-12.5% | เหลือง: 0-10.9% หรือ 12.5-14% | แดง: &gt;14%</p>
                         </div>
                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                           {analytics.avgProdMoist} %
