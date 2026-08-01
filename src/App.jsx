@@ -101,6 +101,25 @@ const resolveProductTypesList = (rows) => {
   });
 };
 
+
+const normalizeProcessEvent = (row) => {
+  const remark = String(row.remark || '').trim().toLowerCase();
+  const wetText = String(row.wetCakeMoisture || '').trim().toLowerCase();
+  const productText = String(row.productMoisture || '').trim().toLowerCase();
+  const compact = (value) => value.replace(/\s+/g, ' ').trim();
+
+  const isStopDryer = /(^|\s)(stop dryer|stop)(\s|$)/i.test(remark) || remark.includes('หยุดอบแป้ง');
+  const isStartDryer = /(^|\s)(start dryer|start)(\s|$)/i.test(remark) || remark === 'อบแป้ง' || remark.includes('เริ่มอบแป้ง');
+  const isClothAction = ['แซะผ้า', 'เปลี่ยนผ้า', 'แซะสลัด', 'แซะผ้าสลัด'].some((word) => wetText.includes(word));
+  const isMachineStop = ['แป้งไม่ลง', 'หยุดเครื่อง'].some((word) => productText.includes(word));
+
+  if (isStopDryer) return { label: 'หยุดอบแป้ง', color: '#ef4444', source: compact(row.remark) };
+  if (isStartDryer) return { label: 'เริ่มอบแป้ง', color: '#22c55e', source: compact(row.remark) };
+  if (isClothAction) return { label: 'แซะ/เปลี่ยนผ้าสลัด', color: '#38bdf8', source: compact(row.wetCakeMoisture) };
+  if (isMachineStop) return { label: 'หยุดเครื่อง', color: '#f59e0b', source: compact(row.productMoisture) };
+  return null;
+};
+
 export default function App() {
   const [data, setData] = useState(generateEmptyData());
   const [docInfo, setDocInfo] = useState({ date: new Date().toLocaleDateString('th-TH'), code: 'FM-PD-010 Rev.1' });
@@ -671,7 +690,7 @@ export default function App() {
                           {analytics.avgTempIn} °C
                         </span>
                       </div>
-                      <ChartHotAirIn dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -686,7 +705,7 @@ export default function App() {
                           {analytics.avgTempOut} °C
                         </span>
                       </div>
-                      <ChartHotAirOut dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -701,7 +720,7 @@ export default function App() {
                           {analytics.avgWetMoist} %
                         </span>
                       </div>
-                      <ChartWetMoisture dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -716,7 +735,7 @@ export default function App() {
                           {analytics.avgProdMoist} %
                         </span>
                       </div>
-                      <ChartProdMoisture dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" />
                     </div>
 
                   </div>
@@ -824,387 +843,110 @@ export default function App() {
   );
 }
 
-function ChartHotAirIn({ dataset, resolvedTypes }) {
+function ProcessChart({
+  dataset,
+  resolvedTypes,
+  field,
+  minY,
+  maxY,
+  ticks,
+  target,
+  lineColor,
+  unit,
+  valueLabel,
+}) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
 
-  const width = 600;
-  const height = 180;
-  const padding = 35;
-  const minY = 100;
-  const maxY = 180;
-
-  const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
-  const getY = (val) => {
-    const v = parseFloat(val);
-    const safeV = isNaN(v) ? minY : v;
-    const clamped = Math.max(minY, Math.min(maxY, safeV));
-    return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
+  const width = 900;
+  const height = 270;
+  const padding = { left: 58, right: 20, top: 42, bottom: 54 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const getX = (i) => padding.left + (i / Math.max(dataset.length - 1, 1)) * plotWidth;
+  const getY = (value) => {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) return null;
+    const clamped = Math.max(minY, Math.min(maxY, parsed));
+    return padding.top + ((maxY - clamped) / (maxY - minY)) * plotHeight;
+  };
+  const getStatus = (value) => {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) return { label: 'ไม่มีข้อมูลตัวอย่าง', color: '#94a3b8' };
+    if (field === 'hotAirIn') {
+      if (parsed < 130) return { label: 'วิกฤต', color: '#ef4444' };
+      if (parsed >= 140 && parsed < 160) return { label: 'ปกติ', color: '#22c55e' };
+      return { label: 'เฝ้าระวัง', color: '#f59e0b' };
+    }
+    if (field === 'hotAirOut') return parsed >= 50 && parsed <= 65 ? { label: 'ปกติ', color: '#22c55e' } : { label: 'เฝ้าระวัง', color: '#f59e0b' };
+    if (field === 'wetCakeMoisture') {
+      if (parsed > 38) return { label: 'วิกฤต', color: '#ef4444' };
+      return parsed >= 30 ? { label: 'ปกติ', color: '#22c55e' } : { label: 'เฝ้าระวัง', color: '#f59e0b' };
+    }
+    if (parsed > 14) return { label: 'วิกฤต', color: '#ef4444' };
+    return parsed >= 11 && parsed <= 12.5 ? { label: 'ปกติ', color: '#22c55e' } : { label: 'เฝ้าระวัง', color: '#f59e0b' };
   };
 
-  const getPointColor = (val) => {
-    const v = parseFloat(val);
-    if (isNaN(v)) return '#94a3b8';
-    if (v < 130) return '#ef4444';
-    if (v >= 140 && v < 160) return '#10b981';
-    return '#f59e0b';
-  };
-
-  const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.hotAirIn)}`).join(' ');
+  const segments = [];
+  let current = [];
+  dataset.forEach((row, index) => {
+    const y = getY(row[field]);
+    if (y === null) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+    } else current.push(`${getX(index)},${y}`);
+  });
+  if (current.length > 1) segments.push(current);
+  const events = dataset.map((row, index) => ({ index, event: normalizeProcessEvent(row) })).filter((item) => item.event);
 
   return (
-    <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
-      <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        <rect 
-          x={padding} 
-          y={getY(160)} 
-          width={width - padding * 2} 
-          height={getY(140) - getY(160)} 
-          fill="#10b981" 
-          opacity="0.15" 
-        />
-
-        {[100, 120, 140, 160, 180].map((t) => (
-          <g key={t}>
-            <line x1={padding} y1={getY(t)} x2={width - padding} y2={getY(t)} stroke="#334155" strokeDasharray="3 3" />
-            <text x={padding - 6} y={getY(t) + 3} fill="#94a3b8" fontSize="9" textAnchor="end">{t}°C</text>
+    <div className="relative w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-inner">
+      <svg className="block h-[270px] w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`area-${field}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <rect x={padding.left} y={getY(target[1])} width={plotWidth} height={getY(target[0]) - getY(target[1])} fill="#22c55e" opacity="0.12" />
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line x1={padding.left} y1={getY(tick)} x2={width - padding.right} y2={getY(tick)} stroke="#334155" strokeDasharray="4 5" />
+            <text x={padding.left - 9} y={getY(tick) + 4} fill="#94a3b8" fontSize="10" textAnchor="end">{tick}{unit}</text>
           </g>
         ))}
-
-        <polyline fill="none" stroke="#f97316" strokeWidth="2.5" points={polylinePoints} />
-
-        {dataset.map((d, i) => {
-          const x = getX(i);
-          const y = getY(d.hotAirIn);
-          const color = getPointColor(d.hotAirIn);
-          const isHovered = hoverIndex === i;
-
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r={isHovered ? "6" : "3.5"} fill={color} stroke="#ffffff" strokeWidth="1.5" />
-              {isHovered && <line x1={x} y1={padding} x2={x} y2={height - padding} stroke="#cbd5e1" strokeDasharray="2 2" />}
-              <rect 
-                x={x - (width / dataset.length / 2)} 
-                y={0} 
-                width={width / dataset.length} 
-                height={height} 
-                fill="transparent" 
-                className="cursor-pointer"
-                onMouseEnter={() => setHoverIndex(i)}
-                onMouseLeave={() => setHoverIndex(null)}
-              />
-            </g>
-          );
+        {events.map(({ index, event }, eventIndex) => {
+          const x = getX(index);
+          const labelY = 14 + (eventIndex % 2) * 14;
+          return <g key={`${index}-${event.label}`}>
+            <line x1={x} y1={padding.top} x2={x} y2={height - padding.bottom} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.9" />
+            <text x={Math.min(x + 5, width - 125)} y={labelY} fill={event.color} fontSize="10" fontWeight="700">{event.label}</text>
+          </g>;
+        })}
+        {segments.map((points, i) => <polyline key={i} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.join(' ')} />)}
+        {dataset.map((row, index) => {
+          const y = getY(row[field]);
+          const x = getX(index);
+          const status = getStatus(row[field]);
+          return <g key={index}>
+            {y !== null && <circle cx={x} cy={y} r={hoverIndex === index ? 6 : 4} fill={status.color} stroke="#fff" strokeWidth="1.5" />}
+            <rect x={x - Math.max(plotWidth / dataset.length / 2, 12)} y={padding.top} width={Math.max(plotWidth / dataset.length, 24)} height={plotHeight + 35} fill="transparent" onMouseEnter={() => setHoverIndex(index)} onMouseLeave={() => setHoverIndex(null)} />
+            <text x={x} y={height - 18} fill={hoverIndex === index ? '#f8fafc' : '#94a3b8'} fontSize="10" textAnchor="middle" fontWeight={hoverIndex === index ? '700' : '400'}>{row.time}</text>
+          </g>;
         })}
       </svg>
-
-      <div className="flex justify-between px-6 text-[10px] text-slate-400 font-mono mt-1">
-        {dataset.map((d, i) => <span key={i} className={hoverIndex === i ? "text-amber-400 font-bold" : ""}>{d.time}</span>)}
-      </div>
-
-      {hoverIndex !== null && dataset[hoverIndex] && (
-        <div 
-          className="absolute top-2 bg-slate-800/95 border border-slate-600 text-white p-2 rounded-lg shadow-xl text-xs space-y-0.5 pointer-events-none z-20"
-          style={{ left: `${Math.min(Math.max(hoverIndex * (100 / dataset.length), 5), 70)}%` }}
-        >
-          <p className="font-bold text-amber-400">🕒 {dataset[hoverIndex].time} น. ({resolvedTypes[hoverIndex] || '-'})</p>
-          <p className="text-orange-300 font-bold">🔥 ลมเข้า IN: {dataset[hoverIndex].hotAirIn || '-'} °C</p>
-          <p className="text-[10px] text-slate-300">
-            สถานะ: {parseFloat(dataset[hoverIndex].hotAirIn) < 130 ? '🔴 วิกฤตต่ำเกิน' : (parseFloat(dataset[hoverIndex].hotAirIn) >= 140 && parseFloat(dataset[hoverIndex].hotAirIn) < 160) ? '🟢 ปกติ' : '🟡 เฝ้าระวัง'}
-          </p>
-        </div>
-      )}
+      {hoverIndex !== null && dataset[hoverIndex] && (() => {
+        const row = dataset[hoverIndex];
+        const event = normalizeProcessEvent(row);
+        const status = getStatus(row[field]);
+        return <div className="pointer-events-none absolute left-3 top-3 z-20 min-w-[210px] rounded-lg border border-slate-600 bg-slate-900/95 p-3 text-xs shadow-2xl">
+          <p className="font-bold text-white">{row.time} น. · {resolvedTypes[hoverIndex] || '-'}</p>
+          <p className="mt-1 font-bold" style={{ color: lineColor }}>{valueLabel}: {row[field] || '-'} {unit}</p>
+          <p className="mt-1 text-slate-300">สถานะ: <span style={{ color: status.color }} className="font-bold">{status.label}</span></p>
+          {event && <p className="mt-1 border-t border-slate-700 pt-1 font-semibold" style={{ color: event.color }}>เหตุการณ์: {event.label}</p>}
+          {!row[field] && !event && <p className="mt-1 text-slate-400">ไม่พบสาเหตุที่ระบุไว้ในแถวนี้</p>}
+        </div>;
+      })()}
     </div>
   );
 }
-
-function ChartHotAirOut({ dataset, resolvedTypes }) {
-  const [hoverIndex, setHoverIndex] = useState(null);
-  if (!dataset || dataset.length === 0) return null;
-
-  const width = 600;
-  const height = 180;
-  const padding = 35;
-  const minY = 35;
-  const maxY = 85;
-
-  const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
-  const getY = (val) => {
-    const v = parseFloat(val);
-    const safeV = isNaN(v) ? minY : v;
-    const clamped = Math.max(minY, Math.min(maxY, safeV));
-    return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
-  };
-
-  const getPointColor = (val) => {
-    const v = parseFloat(val);
-    if (isNaN(v)) return '#94a3b8';
-    if (v >= 50.0 && v <= 65.0) return '#10b981';
-    return '#f59e0b';
-  };
-
-  const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.hotAirOut)}`).join(' ');
-
-  return (
-    <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
-      <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        <rect 
-          x={padding} 
-          y={getY(65)} 
-          width={width - padding * 2} 
-          height={getY(50) - getY(65)} 
-          fill="#10b981" 
-          opacity="0.15" 
-        />
-
-        {[40, 50, 60, 70, 80].map((t) => (
-          <g key={t}>
-            <line x1={padding} y1={getY(t)} x2={width - padding} y2={getY(t)} stroke="#334155" strokeDasharray="3 3" />
-            <text x={padding - 6} y={getY(t) + 3} fill="#94a3b8" fontSize="9" textAnchor="end">{t}°C</text>
-          </g>
-        ))}
-
-        <polyline fill="none" stroke="#f59e0b" strokeWidth="2.5" points={polylinePoints} />
-
-        {dataset.map((d, i) => {
-          const x = getX(i);
-          const y = getY(d.hotAirOut);
-          const color = getPointColor(d.hotAirOut);
-          const isHovered = hoverIndex === i;
-
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r={isHovered ? "6" : "3.5"} fill={color} stroke="#ffffff" strokeWidth="1.5" />
-              {isHovered && <line x1={x} y1={padding} x2={x} y2={height - padding} stroke="#cbd5e1" strokeDasharray="2 2" />}
-              <rect 
-                x={x - (width / dataset.length / 2)} 
-                y={0} 
-                width={width / dataset.length} 
-                height={height} 
-                fill="transparent" 
-                className="cursor-pointer"
-                onMouseEnter={() => setHoverIndex(i)}
-                onMouseLeave={() => setHoverIndex(null)}
-              />
-            </g>
-          );
-        })}
-      </svg>
-
-      <div className="flex justify-between px-6 text-[10px] text-slate-400 font-mono mt-1">
-        {dataset.map((d, i) => <span key={i} className={hoverIndex === i ? "text-amber-400 font-bold" : ""}>{d.time}</span>)}
-      </div>
-
-      {hoverIndex !== null && dataset[hoverIndex] && (
-        <div 
-          className="absolute top-2 bg-slate-800/95 border border-slate-600 text-white p-2 rounded-lg shadow-xl text-xs space-y-0.5 pointer-events-none z-20"
-          style={{ left: `${Math.min(Math.max(hoverIndex * (100 / dataset.length), 5), 70)}%` }}
-        >
-          <p className="font-bold text-amber-400">🕒 {dataset[hoverIndex].time} น. ({resolvedTypes[hoverIndex] || '-'})</p>
-          <p className="text-amber-300 font-bold">💨 ลมออก OUT: {dataset[hoverIndex].hotAirOut || '-'} °C</p>
-          <p className="text-[10px] text-slate-300">
-            สถานะ: {(parseFloat(dataset[hoverIndex].hotAirOut) >= 50 && parseFloat(dataset[hoverIndex].hotAirOut) <= 65) ? '🟢 ปกติ' : '🟡 นอกเกณฑ์มาตรฐาน'}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChartWetMoisture({ dataset, resolvedTypes }) {
-  const [hoverIndex, setHoverIndex] = useState(null);
-  if (!dataset || dataset.length === 0) return null;
-
-  const width = 600;
-  const height = 180;
-  const padding = 35;
-  const minY = 20;
-  const maxY = 45;
-
-  const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
-  const getY = (val) => {
-    const v = parseFloat(val);
-    const safeV = isNaN(v) ? minY : v;
-    const clamped = Math.max(minY, Math.min(maxY, safeV));
-    return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
-  };
-
-  const getPointColor = (val) => {
-    const v = parseFloat(val);
-    if (isNaN(v)) return '#94a3b8';
-    if (v > 38.0) return '#ef4444';
-    if (v >= 30.0 && v <= 38.0) return '#10b981';
-    return '#f59e0b';
-  };
-
-  const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.wetCakeMoisture)}`).join(' ');
-
-  return (
-    <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
-      <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        <rect 
-          x={padding} 
-          y={getY(38)} 
-          width={width - padding * 2} 
-          height={getY(30) - getY(38)} 
-          fill="#10b981" 
-          opacity="0.15" 
-        />
-
-        {[20, 25, 30, 35, 38, 40, 45].map((m) => (
-          <g key={m}>
-            <line x1={padding} y1={getY(m)} x2={width - padding} y2={getY(m)} stroke="#334155" strokeDasharray="3 3" />
-            <text x={padding - 6} y={getY(m) + 3} fill="#94a3b8" fontSize="9" textAnchor="end">{m}%</text>
-          </g>
-        ))}
-
-        <polyline fill="none" stroke="#6366f1" strokeWidth="2.5" points={polylinePoints} />
-
-        {dataset.map((d, i) => {
-          const x = getX(i);
-          const y = getY(d.wetCakeMoisture);
-          const color = getPointColor(d.wetCakeMoisture);
-          const isHovered = hoverIndex === i;
-
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r={isHovered ? "6" : "3.5"} fill={color} stroke="#ffffff" strokeWidth="1.5" />
-              {isHovered && <line x1={x} y1={padding} x2={x} y2={height - padding} stroke="#cbd5e1" strokeDasharray="2 2" />}
-              <rect 
-                x={x - (width / dataset.length / 2)} 
-                y={0} 
-                width={width / dataset.length} 
-                height={height} 
-                fill="transparent" 
-                className="cursor-pointer"
-                onMouseEnter={() => setHoverIndex(i)}
-                onMouseLeave={() => setHoverIndex(null)}
-              />
-            </g>
-          );
-        })}
-      </svg>
-
-      <div className="flex justify-between px-6 text-[10px] text-slate-400 font-mono mt-1">
-        {dataset.map((d, i) => <span key={i} className={hoverIndex === i ? "text-indigo-400 font-bold" : ""}>{d.time}</span>)}
-      </div>
-
-      {hoverIndex !== null && dataset[hoverIndex] && (
-        <div 
-          className="absolute top-2 bg-slate-800/95 border border-slate-600 text-white p-2 rounded-lg shadow-xl text-xs space-y-0.5 pointer-events-none z-20"
-          style={{ left: `${Math.min(Math.max(hoverIndex * (100 / dataset.length), 5), 70)}%` }}
-        >
-          <p className="font-bold text-indigo-300">🕒 {dataset[hoverIndex].time} น. ({resolvedTypes[hoverIndex] || '-'})</p>
-          <p className="text-indigo-200 font-bold">💧 แป้งหมาด WET: {dataset[hoverIndex].wetCakeMoisture || '-'} %</p>
-          <p className="text-[10px] text-slate-300">
-            สถานะ: {parseFloat(dataset[hoverIndex].wetCakeMoisture) > 38 ? '🔴 วิกฤตชื้นสูง' : (parseFloat(dataset[hoverIndex].wetCakeMoisture) >= 30) ? '🟢 ปกติ' : '🟡 ต่ำกว่าเกณฑ์'}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChartProdMoisture({ dataset, resolvedTypes }) {
-  const [hoverIndex, setHoverIndex] = useState(null);
-  if (!dataset || dataset.length === 0) return null;
-
-  const width = 600;
-  const height = 180;
-  const padding = 35;
-  const minY = 8;
-  const maxY = 18;
-
-  const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
-  const getY = (val) => {
-    const v = parseFloat(val);
-    const safeV = isNaN(v) ? minY : v;
-    const clamped = Math.max(minY, Math.min(maxY, safeV));
-    return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
-  };
-
-  const getPointColor = (val) => {
-    const v = parseFloat(val);
-    if (isNaN(v)) return '#94a3b8';
-    if (v > 14.0) return '#ef4444';
-    if (v >= 11.0 && v <= 12.5) return '#10b981';
-    return '#f59e0b';
-  };
-
-  const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.productMoisture)}`).join(' ');
-
-  return (
-    <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
-      <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        <rect 
-          x={padding} 
-          y={getY(12.5)} 
-          width={width - padding * 2} 
-          height={getY(11.0) - getY(12.5)} 
-          fill="#10b981" 
-          opacity="0.20" 
-        />
-
-        <rect 
-          x={padding} 
-          y={getY(14.0)} 
-          width={width - padding * 2} 
-          height={getY(12.5) - getY(14.0)} 
-          fill="#f59e0b" 
-          opacity="0.10" 
-        />
-
-        {[8, 10, 11, 12.5, 14, 16, 18].map((m) => (
-          <g key={m}>
-            <line x1={padding} y1={getY(m)} x2={width - padding} y2={getY(m)} stroke="#334155" strokeDasharray="3 3" />
-            <text x={padding - 6} y={getY(m) + 3} fill={m === 11 || m === 12.5 ? "#34d399" : "#94a3b8"} fontSize="9" textAnchor="end">{m}%</text>
-          </g>
-        ))}
-
-        <polyline fill="none" stroke="#3b82f6" strokeWidth="2.5" points={polylinePoints} />
-
-        {dataset.map((d, i) => {
-          const x = getX(i);
-          const y = getY(d.productMoisture);
-          const color = getPointColor(d.productMoisture);
-          const isHovered = hoverIndex === i;
-
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r={isHovered ? "6" : "3.5"} fill={color} stroke="#ffffff" strokeWidth="1.5" />
-              {isHovered && <line x1={x} y1={padding} x2={x} y2={height - padding} stroke="#cbd5e1" strokeDasharray="2 2" />}
-              <rect 
-                x={x - (width / dataset.length / 2)} 
-                y={0} 
-                width={width / dataset.length} 
-                height={height} 
-                fill="transparent" 
-                className="cursor-pointer"
-                onMouseEnter={() => setHoverIndex(i)}
-                onMouseLeave={() => setHoverIndex(null)}
-              />
-            </g>
-          );
-        })}
-      </svg>
-
-      <div className="flex justify-between px-6 text-[10px] text-slate-400 font-mono mt-1">
-        {dataset.map((d, i) => <span key={i} className={hoverIndex === i ? "text-blue-400 font-bold" : ""}>{d.time}</span>)}
-      </div>
-
-      {hoverIndex !== null && dataset[hoverIndex] && (
-        <div 
-          className="absolute top-2 bg-slate-800/95 border border-slate-600 text-white p-2 rounded-lg shadow-xl text-xs space-y-0.5 pointer-events-none z-20"
-          style={{ left: `${Math.min(Math.max(hoverIndex * (100 / dataset.length), 5), 70)}%` }}
-        >
-          <p className="font-bold text-blue-300">🕒 {dataset[hoverIndex].time} น. ({resolvedTypes[hoverIndex] || '-'})</p>
-          <p className="text-blue-400 font-bold">✨ แป้งแห้ง PROD: {dataset[hoverIndex].productMoisture || '-'} %</p>
-          <p className="text-[10px] text-slate-300">
-            สถานะ: {parseFloat(dataset[hoverIndex].productMoisture) > 14 ? '🔴 วิกฤตชื้นสูง' : (parseFloat(dataset[hoverIndex].productMoisture) >= 11 && parseFloat(dataset[hoverIndex].productMoisture) <= 12.5) ? '🟢 ปกติสมบูรณ์' : '🟡 เบี่ยงเบนจากเกณฑ์'}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
