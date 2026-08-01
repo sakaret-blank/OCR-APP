@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Download, Upload, BarChart3, Clock, Calendar, Sun, Moon, 
-  Printer, Save, Trash2, Database, AlertTriangle, CheckCircle2, 
-  Loader2, Table as TableIcon, Eye, EyeOff, X, ScanLine, 
-  Thermometer, Droplets, Sparkles 
-} from 'lucide-react';
-
-const WORKER_API_URL = 'https://ocr-api.sakaretblank.workers.dev'; 
-const LOCAL_STORAGE_KEY = 'drying_process_history_v3';
+  
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      const jsonSub = cleaned.substring(start, end + 1);
+      return JSON.parse(jsonSub);
+    }
+    throw new Error('ไม่สามารถแปลงข้อมูลที่เซิร์ฟเวอร์ส่งกลับมาเป็น JSON ได้');
+  }
+};
 
 // บีบอัดรูปภาพก่อนส่ง API
 const compressImage = (file, maxWidth = 1600) => {
@@ -63,14 +66,11 @@ export default function App() {
   const [data, setData] = useState(generateEmptyData());
   const [docInfo, setDocInfo] = useState({ date: new Date().toLocaleDateString('th-TH'), code: 'FM-PD-010 Rev.1' });
   const [appState, setAppState] = useState('ready');
-  const [activeTab, setActiveTab] = useState('table'); // 'table' | 'analytics'
-  const [selectedShift, setSelectedShift] = useState('ALL'); // 'ALL' | 'DAY' | 'NIGHT'
+  const [activeTab, setActiveTab] = useState('table');
+  const [selectedShift, setSelectedShift] = useState('ALL');
   const [saveStatus, setSaveStatus] = useState('');
   
-  // ซ่อน/แสดงรูปอ้างอิง
   const [showImagePane, setShowImagePane] = useState(false);
-
-  // ประวัติการบันทึก
   const [history, setHistory] = useState([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -110,7 +110,6 @@ export default function App() {
     setSaveStatus('มีการแก้ไขยังไม่ได้บันทึก');
   };
 
-  // แปลงเครื่องหมาย " ในตารางทั้งหมดให้เป็นชื่อแป้งเต็ม
   const autoFixDittoMarks = () => {
     let lastType = '';
     const newData = data.map((row) => {
@@ -157,9 +156,9 @@ export default function App() {
       const responseText = await response.text();
       let result;
       try {
-        result = JSON.parse(responseText);
+        result = parseSafeJson(responseText);
       } catch (parseError) {
-        throw new Error(`เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ: ${responseText.substring(0, 100)}`);
+        throw new Error(`เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ: ${responseText.substring(0, 80)}...`);
       }
 
       if (!response.ok) {
@@ -179,7 +178,7 @@ export default function App() {
         
         setData(formattedRows);
         autoSaveToHistory(newDate, newCode, formattedRows);
-        setShowImagePane(false); // ซ่อนรูปเพื่อขยายเต็มจอ
+        setShowImagePane(false);
       } else {
         throw new Error("ข้อมูลตอบกลับจาก AI ไม่พบรายการแถว (rows)");
       }
@@ -281,7 +280,6 @@ export default function App() {
   const currentFilteredData = getFilteredDataForShift();
   const resolvedProductTypes = resolveProductTypesList(currentFilteredData);
 
-  // สรุปสถิติ
   const calculateAnalytics = (dataset) => {
     let totalWet = 0, wetCount = 0;
     let totalProd = 0, prodCount = 0;
@@ -293,7 +291,6 @@ export default function App() {
     dataset.forEach((row, idx) => {
       const pType = resolvedProductTypes[idx] || row.productType || '-';
 
-      // 1. อุณหภูมิ IN (เกณฑ์ปกติ 140 - 159.9)
       const tempIn = parseFloat(row.hotAirIn);
       if (!isNaN(tempIn)) { 
         totalTempIn += tempIn; tempInCount++; 
@@ -304,7 +301,6 @@ export default function App() {
         }
       }
 
-      // 2. อุณหภูมิ OUT (เกณฑ์ปกติ 50 - 65)
       const tempOut = parseFloat(row.hotAirOut);
       if (!isNaN(tempOut)) { 
         totalTempOut += tempOut; tempOutCount++; 
@@ -313,7 +309,6 @@ export default function App() {
         }
       }
 
-      // 3. ความชื้นแป้งหมาด (เกณฑ์ปกติ 30 - 38%)
       const wet = parseFloat(row.wetCakeMoisture);
       if (!isNaN(wet)) { 
         totalWet += wet; wetCount++; 
@@ -324,7 +319,6 @@ export default function App() {
         }
       }
 
-      // 4. ความชื้นแป้งแห้ง (เกณฑ์ปกติ 11.0 - 12.5%)
       const prod = parseFloat(row.productMoisture);
       if (!isNaN(prod)) {
         totalProd += prod; prodCount++;
@@ -364,7 +358,6 @@ export default function App() {
 
   return (
     <div className="w-full min-h-screen bg-slate-100 p-1 md:p-2 font-sans flex flex-col">
-      {/* Container ขยายเต็มจอ 100% */}
       <div className="w-full bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-[98vh]">
         
         {/* Header Bar */}
@@ -380,7 +373,6 @@ export default function App() {
           </div>
           
           <div className="flex flex-wrap items-center gap-1.5">
-            {/* ปุ่มสลับแสดง/ซ่อนรูปภาพอ้างอิง */}
             {imageSrc && (
               <button 
                 onClick={() => setShowImagePane(!showImagePane)}
@@ -391,18 +383,15 @@ export default function App() {
               </button>
             )}
 
-            {/* ปุ่มแปลงเครื่องหมาย " */}
             {appState === 'ready' && activeTab === 'table' && (
               <button 
                 onClick={autoFixDittoMarks}
                 className="px-2.5 py-1.5 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-100 text-xs font-semibold flex items-center"
-                title='เปลี่ยนเครื่องหมาย " ให้กลายเป็นชื่อชนิดแป้งเต็ม'
               >
                 <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-600" /> แปลงเครื่องหมายซ้ำ (")
               </button>
             )}
 
-            {/* ปุ่มคลังประวัติ */}
             <button 
               onClick={() => setShowHistoryModal(true)}
               className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center transition-colors"
@@ -461,17 +450,14 @@ export default function App() {
           </div>
         </header>
 
-        {/* Status Toast */}
         {(statusMessage || saveStatus) && (
           <div className="bg-blue-50 px-4 py-1 text-xs text-blue-800 border-b border-blue-100 flex justify-between items-center font-medium">
             <span>{statusMessage || saveStatus}</span>
           </div>
         )}
 
-        {/* Content Area - Full Width Split */}
         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row bg-slate-100 w-full">
           
-          {/* Image Pane (แสดง/ซ่อนได้ตามต้องการ) */}
           {showImagePane && imageSrc && (
             <div className="w-full lg:w-1/3 bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-700 flex flex-col shrink-0 relative transition-all">
               <div className="p-2 bg-slate-800 text-white text-xs flex justify-between items-center font-semibold border-b border-slate-700">
@@ -486,11 +472,9 @@ export default function App() {
             </div>
           )}
 
-          {/* Main Content Area (ขยายเต็ม 100% ของ PC Screen เมื่อซ่อนรูป) */}
           {appState === 'ready' && (
             <div className="flex-1 overflow-auto bg-white flex flex-col w-full">
               
-              {/* TAB 1: TABLE VIEW */}
               {activeTab === 'table' && (
                 <div className="flex-1 overflow-auto w-full">
                   <table className="w-full text-xs md:text-sm text-left border-collapse min-w-[1100px]">
@@ -571,11 +555,9 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB 2: ANALYTICS DASHBOARD (4 SEPARATE HIGH-PRECISION CHARTS) */}
               {activeTab === 'analytics' && (
                 <div className="p-3 md:p-5 overflow-auto flex-1 bg-slate-50 space-y-5 w-full">
                   
-                  {/* Shift Selection Bar */}
                   <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-200 w-full">
                     <div className="flex items-center space-x-2">
                       <Clock className="w-5 h-5 text-blue-600" />
@@ -605,11 +587,10 @@ export default function App() {
                     <div className="flex items-center space-x-4 text-xs font-medium text-slate-600">
                       <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1.5"></span> ปกติ (Green)</span>
                       <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-1.5"></span> เฝ้าระวัง (Yellow)</span>
-                      <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5"></span> วิกฤต/เกินเกณฑ์ (Red)</span>
+                      <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5"></span> วิกฤต (Red)</span>
                     </div>
                   </div>
 
-                  {/* Summary Metric Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
                     <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200">
                       <p className="text-[11px] font-bold text-slate-500 uppercase">อุณหภูมิลมเข้า IN (เฉลี่ย)</p>
@@ -636,17 +617,15 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 4 SEPARATE DETAILED CHARTS GRID (2x2 GRID ON PC) */}
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
                     
-                    {/* CHART 1: อุณหภูมิ IN (อบแป้ง) */}
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
                       <div className="flex justify-between items-center border-b pb-2">
                         <div>
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Thermometer className="w-4 h-4 mr-1.5 text-orange-500" /> 1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 140-160°C | เหลือง: &lt;140°C หรือ &ge;160°C | แดง: &lt;130°C</p>
+                          <p className="text-[10px] text-slate-500">{"ปกติ: 140-160°C | เหลือง: ต่ำกว่า 140°C หรือ 160°C ขึ้นไป | แดง: ต่ำกว่า 130°C"}</p>
                         </div>
                         <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
                           {analytics.avgTempIn} °C
@@ -655,14 +634,13 @@ export default function App() {
                       <ChartHotAirIn dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
                     </div>
 
-                    {/* CHART 2: อุณหภูมิ OUT (ปลายปล่อง) */}
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
                       <div className="flex justify-between items-center border-b pb-2">
                         <div>
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Thermometer className="w-4 h-4 mr-1.5 text-amber-500" /> 2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 50°C - 65°C | นอกเกณฑ์: สีเหลือง</p>
+                          <p className="text-[10px] text-slate-500">{"ปกติ: 50°C - 65°C | นอกเกณฑ์: สีเหลือง"}</p>
                         </div>
                         <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                           {analytics.avgTempOut} °C
@@ -671,14 +649,13 @@ export default function App() {
                       <ChartHotAirOut dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
                     </div>
 
-                    {/* CHART 3: ความชื้นแป้งหมาด WET */}
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
                       <div className="flex justify-between items-center border-b pb-2">
                         <div>
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Droplets className="w-4 h-4 mr-1.5 text-indigo-500" /> 3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 30% - 38% | เหลือง: &lt;30% | แดง: &gt;38%</p>
+                          <p className="text-[10px] text-slate-500">{"ปกติ: 30% - 38% | เหลือง: ต่ำกว่า 30% | แดง: มากกว่า 38%"}</p>
                         </div>
                         <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                           {analytics.avgWetMoist} %
@@ -687,14 +664,13 @@ export default function App() {
                       <ChartWetMoisture dataset={currentFilteredData} resolvedTypes={resolvedProductTypes} />
                     </div>
 
-                    {/* CHART 4: ความชื้นแป้งแห้ง PROD (HIGH PRECISION SCALE) */}
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
                       <div className="flex justify-between items-center border-b pb-2">
                         <div>
                           <h3 className="text-sm font-bold text-slate-800 flex items-center">
                             <Droplets className="w-4 h-4 mr-1.5 text-blue-600" /> 4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)
                           </h3>
-                          <p className="text-[10px] text-slate-500">ปกติ: 11.0-12.5% | เหลือง: 0-10.9% หรือ 12.5-14% | แดง: &gt;14%</p>
+                          <p className="text-[10px] text-slate-500">{"ปกติ: 11.0-12.5% | เหลือง: 0-10.9% หรือ 12.5-14% | แดง: มากกว่า 14%"}</p>
                         </div>
                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                           {analytics.avgProdMoist} %
@@ -705,7 +681,6 @@ export default function App() {
 
                   </div>
 
-                  {/* Anomaly / Warning Section */}
                   <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                     <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center">
                       <AlertTriangle className="w-4 h-4 mr-1.5 text-amber-500" /> รายงานความผิดปกติในกะนี้ ({analytics.anomalies.length} รายการ)
@@ -745,7 +720,6 @@ export default function App() {
           )}
         </div>
 
-        {/* MODAL: History Store */}
         {showHistoryModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
@@ -810,10 +784,6 @@ export default function App() {
   );
 }
 
-// ==========================================
-// CHART 1: HOT AIR IN (°C)
-// Rules: <130 Red, 130-139.9 Yellow, 140-159.9 Green, >=160 Yellow
-// ==========================================
 function ChartHotAirIn({ dataset, resolvedTypes }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -826,17 +796,18 @@ function ChartHotAirIn({ dataset, resolvedTypes }) {
 
   const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
   const getY = (val) => {
-    const v = parseFloat(val) || minY;
-    const clamped = Math.max(minY, Math.min(maxY, v));
+    const v = parseFloat(val);
+    const safeV = isNaN(v) ? minY : v;
+    const clamped = Math.max(minY, Math.min(maxY, safeV));
     return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
   };
 
   const getPointColor = (val) => {
     const v = parseFloat(val);
     if (isNaN(v)) return '#94a3b8';
-    if (v < 130) return '#ef4444'; // Red
-    if (v >= 140 && v < 160) return '#10b981'; // Green
-    return '#f59e0b'; // Yellow
+    if (v < 130) return '#ef4444';
+    if (v >= 140 && v < 160) return '#10b981';
+    return '#f59e0b';
   };
 
   const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.hotAirIn)}`).join(' ');
@@ -844,7 +815,6 @@ function ChartHotAirIn({ dataset, resolvedTypes }) {
   return (
     <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
       <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        {/* Target Zone Box (Green Zone 140°C - 160°C) */}
         <rect 
           x={padding} 
           y={getY(160)} 
@@ -854,7 +824,6 @@ function ChartHotAirIn({ dataset, resolvedTypes }) {
           opacity="0.15" 
         />
 
-        {/* Grid lines */}
         {[100, 120, 140, 160, 180].map((t) => (
           <g key={t}>
             <line x1={padding} y1={getY(t)} x2={width - padding} y2={getY(t)} stroke="#334155" strokeDasharray="3 3" />
@@ -862,10 +831,8 @@ function ChartHotAirIn({ dataset, resolvedTypes }) {
           </g>
         ))}
 
-        {/* Polyline */}
         <polyline fill="none" stroke="#f97316" strokeWidth="2.5" points={polylinePoints} />
 
-        {/* Colored Points */}
         {dataset.map((d, i) => {
           const x = getX(i);
           const y = getY(d.hotAirIn);
@@ -911,10 +878,6 @@ function ChartHotAirIn({ dataset, resolvedTypes }) {
   );
 }
 
-// ==========================================
-// CHART 2: HOT AIR OUT (°C)
-// Rules: 50.0 - 65.0 Green, Outside Yellow
-// ==========================================
 function ChartHotAirOut({ dataset, resolvedTypes }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -927,16 +890,17 @@ function ChartHotAirOut({ dataset, resolvedTypes }) {
 
   const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
   const getY = (val) => {
-    const v = parseFloat(val) || minY;
-    const clamped = Math.max(minY, Math.min(maxY, v));
+    const v = parseFloat(val);
+    const safeV = isNaN(v) ? minY : v;
+    const clamped = Math.max(minY, Math.min(maxY, safeV));
     return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
   };
 
   const getPointColor = (val) => {
     const v = parseFloat(val);
     if (isNaN(v)) return '#94a3b8';
-    if (v >= 50.0 && v <= 65.0) return '#10b981'; // Green
-    return '#f59e0b'; // Yellow
+    if (v >= 50.0 && v <= 65.0) return '#10b981';
+    return '#f59e0b';
   };
 
   const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.hotAirOut)}`).join(' ');
@@ -944,7 +908,6 @@ function ChartHotAirOut({ dataset, resolvedTypes }) {
   return (
     <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
       <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        {/* Target Zone Box (Green Zone 50°C - 65°C) */}
         <rect 
           x={padding} 
           y={getY(65)} 
@@ -954,7 +917,6 @@ function ChartHotAirOut({ dataset, resolvedTypes }) {
           opacity="0.15" 
         />
 
-        {/* Grid lines */}
         {[40, 50, 60, 70, 80].map((t) => (
           <g key={t}>
             <line x1={padding} y1={getY(t)} x2={width - padding} y2={getY(t)} stroke="#334155" strokeDasharray="3 3" />
@@ -962,10 +924,8 @@ function ChartHotAirOut({ dataset, resolvedTypes }) {
           </g>
         ))}
 
-        {/* Polyline */}
         <polyline fill="none" stroke="#f59e0b" strokeWidth="2.5" points={polylinePoints} />
 
-        {/* Colored Points */}
         {dataset.map((d, i) => {
           const x = getX(i);
           const y = getY(d.hotAirOut);
@@ -1011,10 +971,6 @@ function ChartHotAirOut({ dataset, resolvedTypes }) {
   );
 }
 
-// ==========================================
-// CHART 3: WET MOISTURE (%)
-// Rules: 30-38% Green, <30% Yellow, >38% Red
-// ==========================================
 function ChartWetMoisture({ dataset, resolvedTypes }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -1027,17 +983,18 @@ function ChartWetMoisture({ dataset, resolvedTypes }) {
 
   const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
   const getY = (val) => {
-    const v = parseFloat(val) || minY;
-    const clamped = Math.max(minY, Math.min(maxY, v));
+    const v = parseFloat(val);
+    const safeV = isNaN(v) ? minY : v;
+    const clamped = Math.max(minY, Math.min(maxY, safeV));
     return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
   };
 
   const getPointColor = (val) => {
     const v = parseFloat(val);
     if (isNaN(v)) return '#94a3b8';
-    if (v > 38.0) return '#ef4444'; // Red
-    if (v >= 30.0 && v <= 38.0) return '#10b981'; // Green
-    return '#f59e0b'; // Yellow
+    if (v > 38.0) return '#ef4444';
+    if (v >= 30.0 && v <= 38.0) return '#10b981';
+    return '#f59e0b';
   };
 
   const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.wetCakeMoisture)}`).join(' ');
@@ -1045,7 +1002,6 @@ function ChartWetMoisture({ dataset, resolvedTypes }) {
   return (
     <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
       <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        {/* Target Zone Box (Green Zone 30% - 38%) */}
         <rect 
           x={padding} 
           y={getY(38)} 
@@ -1055,7 +1011,6 @@ function ChartWetMoisture({ dataset, resolvedTypes }) {
           opacity="0.15" 
         />
 
-        {/* Grid lines */}
         {[20, 25, 30, 35, 38, 40, 45].map((m) => (
           <g key={m}>
             <line x1={padding} y1={getY(m)} x2={width - padding} y2={getY(m)} stroke="#334155" strokeDasharray="3 3" />
@@ -1063,10 +1018,8 @@ function ChartWetMoisture({ dataset, resolvedTypes }) {
           </g>
         ))}
 
-        {/* Polyline */}
         <polyline fill="none" stroke="#6366f1" strokeWidth="2.5" points={polylinePoints} />
 
-        {/* Colored Points */}
         {dataset.map((d, i) => {
           const x = getX(i);
           const y = getY(d.wetCakeMoisture);
@@ -1112,11 +1065,6 @@ function ChartWetMoisture({ dataset, resolvedTypes }) {
   );
 }
 
-// ==========================================
-// CHART 4: PRODUCT MOISTURE (%) HIGH PRECISION
-// Rules: 11.0 - 12.5% Green, 0-10.9% Yellow, 12.5-14.0% Yellow, >14.0% Red
-// Scale range: 8% - 18% for high precision!
-// ==========================================
 function ChartProdMoisture({ dataset, resolvedTypes }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -1129,17 +1077,18 @@ function ChartProdMoisture({ dataset, resolvedTypes }) {
 
   const getX = (i) => padding + (i / (dataset.length - 1 || 1)) * (width - padding * 2);
   const getY = (val) => {
-    const v = parseFloat(val) || minY;
-    const clamped = Math.max(minY, Math.min(maxY, v));
+    const v = parseFloat(val);
+    const safeV = isNaN(v) ? minY : v;
+    const clamped = Math.max(minY, Math.min(maxY, safeV));
     return height - padding - ((clamped - minY) / (maxY - minY)) * (height - padding * 2);
   };
 
   const getPointColor = (val) => {
     const v = parseFloat(val);
     if (isNaN(v)) return '#94a3b8';
-    if (v > 14.0) return '#ef4444'; // Red (>14%)
-    if (v >= 11.0 && v <= 12.5) return '#10b981'; // Green (11 - 12.5%)
-    return '#f59e0b'; // Yellow
+    if (v > 14.0) return '#ef4444';
+    if (v >= 11.0 && v <= 12.5) return '#10b981';
+    return '#f59e0b';
   };
 
   const polylinePoints = dataset.map((d, i) => `${getX(i)},${getY(d.productMoisture)}`).join(' ');
@@ -1147,7 +1096,6 @@ function ChartProdMoisture({ dataset, resolvedTypes }) {
   return (
     <div className="relative w-full bg-slate-900 rounded-lg p-2 text-white">
       <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
-        {/* Target Zone Box (Green Zone 11.0% - 12.5%) */}
         <rect 
           x={padding} 
           y={getY(12.5)} 
@@ -1157,7 +1105,6 @@ function ChartProdMoisture({ dataset, resolvedTypes }) {
           opacity="0.20" 
         />
 
-        {/* Warning Zone Box (Yellow Zone 12.5% - 14.0%) */}
         <rect 
           x={padding} 
           y={getY(14.0)} 
@@ -1167,7 +1114,6 @@ function ChartProdMoisture({ dataset, resolvedTypes }) {
           opacity="0.10" 
         />
 
-        {/* Grid lines */}
         {[8, 10, 11, 12.5, 14, 16, 18].map((m) => (
           <g key={m}>
             <line x1={padding} y1={getY(m)} x2={width - padding} y2={getY(m)} stroke="#334155" strokeDasharray="3 3" />
@@ -1175,10 +1121,8 @@ function ChartProdMoisture({ dataset, resolvedTypes }) {
           </g>
         ))}
 
-        {/* Polyline */}
         <polyline fill="none" stroke="#3b82f6" strokeWidth="2.5" points={polylinePoints} />
 
-        {/* Colored Points */}
         {dataset.map((d, i) => {
           const x = getX(i);
           const y = getY(d.productMoisture);
