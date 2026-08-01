@@ -102,21 +102,37 @@ const resolveProductTypesList = (rows) => {
 };
 
 
-const normalizeProcessEvent = (row) => {
-  const remark = String(row.remark || '').trim().toLowerCase();
-  const wetText = String(row.wetCakeMoisture || '').trim().toLowerCase();
-  const productText = String(row.productMoisture || '').trim().toLowerCase();
-  const compact = (value) => value.replace(/\s+/g, ' ').trim();
+const extractEventTime = (...values) => {
+  for (const value of values) {
+    const text = String(value || '');
+    const match = text.match(/(?:^|\D)([01]?\d|2[0-4])[:.]([0-5]\d)(?:\D|$)/);
+    if (match) {
+      return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+    }
+  }
+  return null;
+};
 
+const normalizeProcessEvent = (row) => {
+  const remarkRaw = String(row.remark || '').trim();
+  const wetRaw = String(row.wetCakeMoisture || '').trim();
+  const productRaw = String(row.productMoisture || '').trim();
+  const remark = remarkRaw.toLowerCase();
+  const wetText = wetRaw.toLowerCase();
+  const productText = productRaw.toLowerCase();
+  const eventTime = extractEventTime(remarkRaw, wetRaw, productRaw) || String(row.time || '').replace('.', ':');
+
+  const isPowerOutage = remark.includes('ไฟดับ') || remark.includes('power outage') || remark.includes('power fail');
   const isStopDryer = /(^|\s)(stop dryer|stop)(\s|$)/i.test(remark) || remark.includes('หยุดอบแป้ง');
-  const isStartDryer = /(^|\s)(start dryer|start)(\s|$)/i.test(remark) || remark === 'อบแป้ง' || remark.includes('เริ่มอบแป้ง');
+  const isStartDryer = /(^|\s)(start dryer|start|power start)(\s|$)/i.test(remark) || remark === 'อบแป้ง' || remark.includes('เริ่มอบแป้ง');
   const isClothAction = ['แซะผ้า', 'เปลี่ยนผ้า', 'แซะสลัด', 'แซะผ้าสลัด'].some((word) => wetText.includes(word));
   const isMachineStop = ['แป้งไม่ลง', 'หยุดเครื่อง'].some((word) => productText.includes(word));
 
-  if (isStopDryer) return { label: 'หยุดอบแป้ง', color: '#ef4444', source: compact(row.remark) };
-  if (isStartDryer) return { label: 'เริ่มอบแป้ง', color: '#22c55e', source: compact(row.remark) };
-  if (isClothAction) return { label: 'แซะ/เปลี่ยนผ้าสลัด', color: '#38bdf8', source: compact(row.wetCakeMoisture) };
-  if (isMachineStop) return { label: 'หยุดเครื่อง', color: '#f59e0b', source: compact(row.productMoisture) };
+  if (isPowerOutage) return { type: 'powerOutage', label: 'ไฟดับ', color: '#60a5fa', source: remarkRaw, time: eventTime };
+  if (isStopDryer) return { type: 'stopDryer', label: 'หยุดอบแป้ง', color: '#ef4444', source: remarkRaw, time: eventTime };
+  if (isStartDryer) return { type: 'startDryer', label: 'เริ่มอบแป้ง', color: '#22c55e', source: remarkRaw, time: eventTime };
+  if (isClothAction) return { type: 'clothAction', label: 'แซะ/เปลี่ยนผ้าสลัด', color: '#38bdf8', source: wetRaw, time: eventTime };
+  if (isMachineStop) return { type: 'machineStop', label: 'หยุดเครื่อง', color: '#f59e0b', source: productRaw, time: eventTime };
   return null;
 };
 
@@ -860,10 +876,30 @@ function ProcessChart({
 
   const width = 900;
   const height = 270;
-  const padding = { left: 58, right: 20, top: 42, bottom: 54 };
+  const padding = { left: 58, right: 20, top: 48, bottom: 54 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const getX = (i) => padding.left + (i / Math.max(dataset.length - 1, 1)) * plotWidth;
+
+  const parseMinutes = (value) => {
+    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours === 24) return 24 * 60 + minutes;
+    return hours * 60 + minutes;
+  };
+
+  const firstMinute = parseMinutes(dataset[0]?.time) ?? 0;
+  const rowMinutes = dataset.map((row, index) => {
+    let minute = parseMinutes(row.time);
+    if (minute === null) return firstMinute + index * 60;
+    while (minute < firstMinute) minute += 24 * 60;
+    return minute;
+  });
+  const domainStart = rowMinutes[0];
+  const domainEnd = rowMinutes[rowMinutes.length - 1] || domainStart + 60;
+  const getXFromMinute = (minute) => padding.left + ((minute - domainStart) / Math.max(domainEnd - domainStart, 1)) * plotWidth;
+  const getX = (index) => getXFromMinute(rowMinutes[index]);
   const getY = (value) => {
     const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed)) return null;
@@ -897,17 +933,35 @@ function ProcessChart({
     } else current.push(`${getX(index)},${y}`);
   });
   if (current.length > 1) segments.push(current);
-  const events = dataset.map((row, index) => ({ index, event: normalizeProcessEvent(row) })).filter((item) => item.event);
+
+  const events = dataset.map((row, index) => {
+    const event = normalizeProcessEvent(row);
+    if (!event) return null;
+    let minute = parseMinutes(event.time);
+    if (minute === null) minute = rowMinutes[index];
+    while (minute < domainStart) minute += 24 * 60;
+    return { index, minute, x: getXFromMinute(minute), event };
+  }).filter(Boolean).filter(({ minute }) => minute >= domainStart && minute <= domainEnd);
+
+  const findPreviousValid = (minute) => {
+    let found = null;
+    dataset.forEach((row, index) => {
+      const y = getY(row[field]);
+      if (rowMinutes[index] <= minute && y !== null) found = { index, minute: rowMinutes[index], x: getX(index), y };
+    });
+    return found;
+  };
+  const findNextValid = (minute) => {
+    for (let index = 0; index < dataset.length; index += 1) {
+      const y = getY(dataset[index][field]);
+      if (rowMinutes[index] >= minute && y !== null) return { index, minute: rowMinutes[index], x: getX(index), y };
+    }
+    return null;
+  };
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-inner">
       <svg className="block h-[270px] w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id={`area-${field}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lineColor} stopOpacity="0.28" />
-            <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
         <rect x={padding.left} y={getY(target[1])} width={plotWidth} height={getY(target[0]) - getY(target[1])} fill="#22c55e" opacity="0.12" />
         {ticks.map((tick) => (
           <g key={tick}>
@@ -915,14 +969,26 @@ function ProcessChart({
             <text x={padding.left - 9} y={getY(tick) + 4} fill="#94a3b8" fontSize="10" textAnchor="end">{tick}{unit}</text>
           </g>
         ))}
-        {events.map(({ index, event }, eventIndex) => {
-          const x = getX(index);
+
+        {events.map(({ index, x, event }, eventIndex) => {
           const labelY = 14 + (eventIndex % 2) * 14;
-          return <g key={`${index}-${event.label}`}>
-            <line x1={x} y1={padding.top} x2={x} y2={height - padding.bottom} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.9" />
-            <text x={Math.min(x + 5, width - 125)} y={labelY} fill={event.color} fontSize="10" fontWeight="700">{event.label}</text>
+          const previous = findPreviousValid(events[eventIndex].minute);
+          const next = findNextValid(events[eventIndex].minute);
+          const isStopLike = ['stopDryer', 'powerOutage', 'machineStop'].includes(event.type);
+          const isStart = event.type === 'startDryer';
+          return <g key={`${index}-${event.label}-${event.time}`}>
+            {isStopLike && previous && previous.x < x && (
+              <line x1={previous.x} y1={previous.y} x2={x} y2={previous.y} stroke={lineColor} strokeWidth="3" strokeLinecap="round" />
+            )}
+            {isStart && next && x < next.x && (
+              <line x1={x} y1={height - padding.bottom} x2={next.x} y2={next.y} stroke={lineColor} strokeWidth="3" strokeLinecap="round" strokeDasharray="6 4" opacity="0.9" />
+            )}
+            <line x1={x} y1={padding.top} x2={x} y2={height - padding.bottom} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.95" />
+            <circle cx={x} cy={isStart ? height - padding.bottom : (previous?.y ?? height - padding.bottom)} r="3.5" fill="#0f172a" stroke={event.color} strokeWidth="2" />
+            <text x={Math.min(Math.max(x + 5, padding.left + 2), width - 125)} y={labelY} fill={event.color} fontSize="10" fontWeight="700">{event.label} {event.time}</text>
           </g>;
         })}
+
         {segments.map((points, i) => <polyline key={i} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.join(' ')} />)}
         {dataset.map((row, index) => {
           const y = getY(row[field]);
@@ -943,10 +1009,11 @@ function ProcessChart({
           <p className="font-bold text-white">{row.time} น. · {resolvedTypes[hoverIndex] || '-'}</p>
           <p className="mt-1 font-bold" style={{ color: lineColor }}>{valueLabel}: {row[field] || '-'} {unit}</p>
           <p className="mt-1 text-slate-300">สถานะ: <span style={{ color: status.color }} className="font-bold">{status.label}</span></p>
-          {event && <p className="mt-1 border-t border-slate-700 pt-1 font-semibold" style={{ color: event.color }}>เหตุการณ์: {event.label}</p>}
+          {event && <p className="mt-1 border-t border-slate-700 pt-1 font-semibold" style={{ color: event.color }}>เหตุการณ์: {event.label} {event.time}</p>}
           {!row[field] && !event && <p className="mt-1 text-slate-400">ไม่พบสาเหตุที่ระบุไว้ในแถวนี้</p>}
         </div>;
       })()}
     </div>
   );
 }
+
