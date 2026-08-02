@@ -102,6 +102,13 @@ const resolveProductTypesList = (rows) => {
 };
 
 
+const parseNumericValue = (value) => {
+  const text = String(value ?? '').trim().replace(/,/g, '');
+  if (!/^-?\d+(?:\.\d+)?%?$/.test(text)) return null;
+  const parsed = Number.parseFloat(text.replace('%', ''));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const extractEventTime = (...values) => {
   for (const value of values) {
     const text = String(value || '');
@@ -366,8 +373,8 @@ export default function App() {
     dataset.forEach((row, idx) => {
       const pType = resolvedFilteredProductTypes[idx] || row.productType || '-';
 
-      const tempIn = parseFloat(row.hotAirIn);
-      if (!isNaN(tempIn)) { 
+      const tempIn = parseNumericValue(row.hotAirIn);
+      if (tempIn !== null) { 
         totalTempIn += tempIn; tempInCount++; 
         if (tempIn < 130) {
           anomalies.push({ time: row.time, pType, issue: `อุณหภูมิลมเข้าต่ำกว่าเกณฑ์วิกฤต (${tempIn}°C)`, level: 'red' });
@@ -376,16 +383,16 @@ export default function App() {
         }
       }
 
-      const tempOut = parseFloat(row.hotAirOut);
-      if (!isNaN(tempOut)) { 
+      const tempOut = parseNumericValue(row.hotAirOut);
+      if (tempOut !== null) { 
         totalTempOut += tempOut; tempOutCount++; 
         if (tempOut < 50 || tempOut > 65) {
           anomalies.push({ time: row.time, pType, issue: `อุณหภูมิปลายปล่อง (OUT) ผิดปกติ (${tempOut}°C)`, level: 'yellow' });
         }
       }
 
-      const wet = parseFloat(row.wetCakeMoisture);
-      if (!isNaN(wet)) { 
+      const wet = parseNumericValue(row.wetCakeMoisture);
+      if (wet !== null) { 
         totalWet += wet; wetCount++; 
         if (wet > 38.0) {
           anomalies.push({ time: row.time, pType, issue: `ความชื้นแป้งหมาดสูงเกิน 38% (${wet}%)`, level: 'red' });
@@ -394,8 +401,8 @@ export default function App() {
         }
       }
 
-      const prod = parseFloat(row.productMoisture);
-      if (!isNaN(prod)) {
+      const prod = parseNumericValue(row.productMoisture);
+      if (prod !== null) {
         totalProd += prod; prodCount++;
         if (prod > 14.0) {
           anomalies.push({ time: row.time, pType, issue: `ความชื้นแป้งแห้งชื้นเกินเกณฑ์วิกฤต 14% (${prod}%)`, level: 'red' });
@@ -900,15 +907,16 @@ function ProcessChart({
   const domainEnd = rowMinutes[rowMinutes.length - 1] || domainStart + 60;
   const getXFromMinute = (minute) => padding.left + ((minute - domainStart) / Math.max(domainEnd - domainStart, 1)) * plotWidth;
   const getX = (index) => getXFromMinute(rowMinutes[index]);
+  const baselineY = height - padding.bottom;
   const getY = (value) => {
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed)) return null;
+    const parsed = parseNumericValue(value);
+    if (parsed === null) return null;
     const clamped = Math.max(minY, Math.min(maxY, parsed));
     return padding.top + ((maxY - clamped) / (maxY - minY)) * plotHeight;
   };
   const getStatus = (value) => {
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed)) return { label: 'ไม่มีข้อมูลตัวอย่าง', color: '#94a3b8' };
+    const parsed = parseNumericValue(value);
+    if (parsed === null) return { label: 'ไม่มีข้อมูลตัวอย่าง', color: '#94a3b8' };
     if (field === 'hotAirIn') {
       if (parsed < 130) return { label: 'วิกฤต', color: '#ef4444' };
       if (parsed >= 140 && parsed < 160) return { label: 'ปกติ', color: '#22c55e' };
@@ -923,17 +931,6 @@ function ProcessChart({
     return parsed >= 11 && parsed <= 12.5 ? { label: 'ปกติ', color: '#22c55e' } : { label: 'เฝ้าระวัง', color: '#f59e0b' };
   };
 
-  const segments = [];
-  let current = [];
-  dataset.forEach((row, index) => {
-    const y = getY(row[field]);
-    if (y === null) {
-      if (current.length > 1) segments.push(current);
-      current = [];
-    } else current.push(`${getX(index)},${y}`);
-  });
-  if (current.length > 1) segments.push(current);
-
   const events = dataset.map((row, index) => {
     const event = normalizeProcessEvent(row);
     if (!event) return null;
@@ -941,7 +938,33 @@ function ProcessChart({
     if (minute === null) minute = rowMinutes[index];
     while (minute < domainStart) minute += 24 * 60;
     return { index, minute, x: getXFromMinute(minute), event };
-  }).filter(Boolean).filter(({ minute }) => minute >= domainStart && minute <= domainEnd);
+  }).filter(Boolean).filter(({ minute }) => minute >= domainStart && minute <= domainEnd)
+    .sort((a, b) => a.minute - b.minute);
+
+  const processEventTypes = new Set(['stopDryer', 'startDryer', 'powerOutage', 'machineStop']);
+  const affectsCurve = field !== 'productMoisture';
+  const curveEvents = affectsCurve ? events.filter(({ event }) => processEventTypes.has(event.type)) : [];
+
+  const hasCurveEventBetween = (fromMinute, toMinute) => curveEvents.some(({ minute }) => minute > fromMinute && minute < toMinute);
+
+  const segments = [];
+  let current = [];
+  dataset.forEach((row, index) => {
+    const y = getY(row[field]);
+    if (y === null) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+      return;
+    }
+    const point = { x: getX(index), y, minute: rowMinutes[index] };
+    if (current.length > 0 && hasCurveEventBetween(current[current.length - 1].minute, point.minute)) {
+      if (current.length > 1) segments.push(current);
+      current = [point];
+    } else {
+      current.push(point);
+    }
+  });
+  if (current.length > 1) segments.push(current);
 
   const findPreviousValid = (minute) => {
     let found = null;
@@ -954,10 +977,13 @@ function ProcessChart({
   const findNextValid = (minute) => {
     for (let index = 0; index < dataset.length; index += 1) {
       const y = getY(dataset[index][field]);
-      if (rowMinutes[index] >= minute && y !== null) return { index, minute: rowMinutes[index], x: getX(index), y };
+      if (rowMinutes[index] > minute && y !== null) return { index, minute: rowMinutes[index], x: getX(index), y };
     }
     return null;
   };
+  const hasBlockingEvent = (fromMinute, toMinute, ignoredType) => curveEvents.some(({ minute, event }) =>
+    minute > fromMinute && minute < toMinute && event.type !== ignoredType
+  );
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-inner">
@@ -970,90 +996,28 @@ function ProcessChart({
           </g>
         ))}
 
-        {events.map(({ index, x, event, minute }, eventIndex) => {
+        {events.map(({ index, minute, x, event }, eventIndex) => {
           const labelY = 14 + (eventIndex % 2) * 14;
           const previous = findPreviousValid(minute);
           const next = findNextValid(minute);
           const isStopLike = ['stopDryer', 'powerOutage', 'machineStop'].includes(event.type);
           const isStart = event.type === 'startDryer';
-          const isTemperature = field === 'hotAirIn' || field === 'hotAirOut';
-          const isWetCake = field === 'wetCakeMoisture';
-          const isProduct = field === 'productMoisture';
-          const baselineY = height - padding.bottom;
-          const nextStart = isStopLike
-            ? events.find((candidate) => candidate.minute > minute && candidate.event.type === 'startDryer')
-            : null;
-          const coolingEndX = nextStart?.x ?? Math.min(getXFromMinute(minute + 60), width - padding.right);
-
+          const canDrawStop = affectsCurve && isStopLike && previous && previous.minute < minute && !hasBlockingEvent(previous.minute, minute, event.type);
+          const canDrawStart = affectsCurve && isStart && next && minute < next.minute && !hasBlockingEvent(minute, next.minute, event.type);
           return <g key={`${index}-${event.label}-${event.time}`}>
-            {!isProduct && isStopLike && previous && previous.x < x && (
-              <line
-                x1={previous.x}
-                y1={previous.y}
-                x2={x}
-                y2={previous.y}
-                stroke={lineColor}
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
+            {canDrawStop && (
+              <line x1={previous.x} y1={previous.y} x2={x} y2={baselineY} stroke={lineColor} strokeWidth="3" strokeLinecap="round" />
             )}
-
-            {isTemperature && isStopLike && previous && coolingEndX > x && (
-              <line
-                x1={x}
-                y1={previous.y}
-                x2={coolingEndX}
-                y2={baselineY}
-                stroke={lineColor}
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray="6 4"
-                opacity="0.9"
-              />
+            {canDrawStart && (
+              <line x1={x} y1={baselineY} x2={next.x} y2={next.y} stroke={lineColor} strokeWidth="3" strokeLinecap="round" strokeDasharray="6 4" opacity="0.9" />
             )}
-
-            {isWetCake && isStart && next && x < next.x && (
-              <line
-                x1={x}
-                y1={baselineY}
-                x2={next.x}
-                y2={next.y}
-                stroke={lineColor}
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray="6 4"
-                opacity="0.9"
-              />
-            )}
-
-            {isTemperature && isStart && next && x < next.x && (
-              <line
-                x1={x}
-                y1={baselineY}
-                x2={next.x}
-                y2={next.y}
-                stroke={lineColor}
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray="6 4"
-                opacity="0.9"
-              />
-            )}
-
             <line x1={x} y1={padding.top} x2={x} y2={baselineY} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.95" />
-            <circle
-              cx={x}
-              cy={isProduct ? baselineY : (isStart ? baselineY : (previous?.y ?? baselineY))}
-              r="3.5"
-              fill="#0f172a"
-              stroke={event.color}
-              strokeWidth="2"
-            />
+            {affectsCurve && (isStopLike || isStart) && <circle cx={x} cy={baselineY} r="3.5" fill="#0f172a" stroke={event.color} strokeWidth="2" />}
             <text x={Math.min(Math.max(x + 5, padding.left + 2), width - 125)} y={labelY} fill={event.color} fontSize="10" fontWeight="700">{event.label} {event.time}</text>
           </g>;
         })}
 
-        {segments.map((points, i) => <polyline key={i} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.join(' ')} />)}
+        {segments.map((points, i) => <polyline key={i} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.map((point) => `${point.x},${point.y}`).join(' ')} />)}
         {dataset.map((row, index) => {
           const y = getY(row[field]);
           const x = getX(index);
@@ -1071,13 +1035,12 @@ function ProcessChart({
         const status = getStatus(row[field]);
         return <div className="pointer-events-none absolute left-3 top-3 z-20 min-w-[210px] rounded-lg border border-slate-600 bg-slate-900/95 p-3 text-xs shadow-2xl">
           <p className="font-bold text-white">{row.time} น. · {resolvedTypes[hoverIndex] || '-'}</p>
-          <p className="mt-1 font-bold" style={{ color: lineColor }}>{valueLabel}: {row[field] || '-'} {unit}</p>
+          <p className="mt-1 font-bold" style={{ color: lineColor }}>{valueLabel}: {parseNumericValue(row[field]) === null ? '-' : row[field]} {unit}</p>
           <p className="mt-1 text-slate-300">สถานะ: <span style={{ color: status.color }} className="font-bold">{status.label}</span></p>
           {event && <p className="mt-1 border-t border-slate-700 pt-1 font-semibold" style={{ color: event.color }}>เหตุการณ์: {event.label} {event.time}</p>}
-          {!row[field] && !event && <p className="mt-1 text-slate-400">ไม่พบสาเหตุที่ระบุไว้ในแถวนี้</p>}
+          {parseNumericValue(row[field]) === null && !event && <p className="mt-1 text-slate-400">ไม่พบสาเหตุที่ระบุไว้ในแถวนี้</p>}
         </div>;
       })()}
     </div>
   );
 }
-
