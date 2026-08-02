@@ -713,7 +713,7 @@ export default function App() {
                           {analytics.avgTempIn} °C
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEventTimeline />
                     </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
@@ -877,6 +877,7 @@ function ProcessChart({
   lineColor,
   unit,
   valueLabel,
+  showEventTimeline = false,
 }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -941,12 +942,6 @@ function ProcessChart({
   }).filter(Boolean).filter(({ minute }) => minute >= domainStart && minute <= domainEnd)
     .sort((a, b) => a.minute - b.minute);
 
-  const processEventTypes = new Set(['stopDryer', 'startDryer', 'powerOutage', 'machineStop']);
-  const affectsCurve = field !== 'productMoisture';
-  const curveEvents = affectsCurve ? events.filter(({ event }) => processEventTypes.has(event.type)) : [];
-
-  const hasCurveEventBetween = (fromMinute, toMinute) => curveEvents.some(({ minute }) => minute > fromMinute && minute < toMinute);
-
   const segments = [];
   let current = [];
   dataset.forEach((row, index) => {
@@ -956,34 +951,14 @@ function ProcessChart({
       current = [];
       return;
     }
-    const point = { x: getX(index), y, minute: rowMinutes[index] };
-    if (current.length > 0 && hasCurveEventBetween(current[current.length - 1].minute, point.minute)) {
-      if (current.length > 1) segments.push(current);
-      current = [point];
-    } else {
-      current.push(point);
-    }
+    current.push({ x: getX(index), y, minute: rowMinutes[index] });
   });
   if (current.length > 1) segments.push(current);
 
-  const findPreviousValid = (minute) => {
-    let found = null;
-    dataset.forEach((row, index) => {
-      const y = getY(row[field]);
-      if (rowMinutes[index] <= minute && y !== null) found = { index, minute: rowMinutes[index], x: getX(index), y };
-    });
-    return found;
-  };
-  const findNextValid = (minute) => {
-    for (let index = 0; index < dataset.length; index += 1) {
-      const y = getY(dataset[index][field]);
-      if (rowMinutes[index] > minute && y !== null) return { index, minute: rowMinutes[index], x: getX(index), y };
-    }
-    return null;
-  };
-  const hasBlockingEvent = (fromMinute, toMinute, ignoredType) => curveEvents.some(({ minute, event }) =>
-    minute > fromMinute && minute < toMinute && event.type !== ignoredType
+  const timelineEvents = events.filter(({ event }) =>
+    ['stopDryer', 'startDryer', 'powerOutage', 'machineStop', 'clothAction'].includes(event.type)
   );
+
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-inner">
@@ -996,26 +971,7 @@ function ProcessChart({
           </g>
         ))}
 
-        {events.map(({ index, minute, x, event }, eventIndex) => {
-          const labelY = 14 + (eventIndex % 2) * 14;
-          const previous = findPreviousValid(minute);
-          const next = findNextValid(minute);
-          const isStopLike = ['stopDryer', 'powerOutage', 'machineStop'].includes(event.type);
-          const isStart = event.type === 'startDryer';
-          const canDrawStop = affectsCurve && isStopLike && previous && previous.minute < minute && !hasBlockingEvent(previous.minute, minute, event.type);
-          const canDrawStart = affectsCurve && isStart && next && minute < next.minute && !hasBlockingEvent(minute, next.minute, event.type);
-          return <g key={`${index}-${event.label}-${event.time}`}>
-            {canDrawStop && (
-              <line x1={previous.x} y1={previous.y} x2={x} y2={baselineY} stroke={lineColor} strokeWidth="3" strokeLinecap="round" />
-            )}
-            {canDrawStart && (
-              <line x1={x} y1={baselineY} x2={next.x} y2={next.y} stroke={lineColor} strokeWidth="3" strokeLinecap="round" strokeDasharray="6 4" opacity="0.9" />
-            )}
-            <line x1={x} y1={padding.top} x2={x} y2={baselineY} stroke={event.color} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.95" />
-            {affectsCurve && (isStopLike || isStart) && <circle cx={x} cy={baselineY} r="3.5" fill="#0f172a" stroke={event.color} strokeWidth="2" />}
-            <text x={Math.min(Math.max(x + 5, padding.left + 2), width - 125)} y={labelY} fill={event.color} fontSize="10" fontWeight="700">{event.label} {event.time}</text>
-          </g>;
-        })}
+
 
         {segments.map((points, i) => <polyline key={i} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.map((point) => `${point.x},${point.y}`).join(' ')} />)}
         {dataset.map((row, index) => {
@@ -1029,6 +985,25 @@ function ProcessChart({
           </g>;
         })}
       </svg>
+      {showEventTimeline && timelineEvents.length > 0 && (
+        <div className="border-t border-slate-800 bg-slate-900/90 px-3 py-2">
+          <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
+            <span>เหตุการณ์ในช่วงที่เลือก</span>
+            <span>{timelineEvents.length} รายการ</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {timelineEvents.map(({ index, event }) => (
+              <span
+                key={`${index}-${event.type}-${event.time}`}
+                className="rounded-md border px-2 py-1 text-[10px] font-semibold"
+                style={{ borderColor: `${event.color}66`, color: event.color, backgroundColor: `${event.color}14` }}
+              >
+                {event.time} · {event.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {hoverIndex !== null && dataset[hoverIndex] && (() => {
         const row = dataset[hoverIndex];
         const event = normalizeProcessEvent(row);
