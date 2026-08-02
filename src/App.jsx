@@ -149,6 +149,8 @@ export default function App() {
   const [appState, setAppState] = useState('ready');
   const [activeTab, setActiveTab] = useState('table');
   const [selectedShift, setSelectedShift] = useState('ALL');
+  const [showChartEvents, setShowChartEvents] = useState(true);
+  const [showChartGradient, setShowChartGradient] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
   
   const [showImagePane, setShowImagePane] = useState(false);
@@ -487,13 +489,13 @@ export default function App() {
                 <div className="bg-slate-100 p-1 rounded-lg flex space-x-1 border border-slate-200">
                   <button 
                     onClick={() => setActiveTab('table')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${activeTab === 'table' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${activeTab === 'table' ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                   >
                     <TableIcon className="w-3.5 h-3.5 inline mr-1" /> ตารางบันทึก
                   </button>
                   <button 
                     onClick={() => setActiveTab('analytics')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                   >
                     <BarChart3 className="w-3.5 h-3.5 inline mr-1" /> แดชบอร์ดวิเคราะห์
                   </button>
@@ -638,35 +640,44 @@ export default function App() {
               )}
 
               {activeTab === 'analytics' && (
-                <div className="p-3 md:p-5 overflow-auto flex-1 bg-slate-50 space-y-5 w-full">
+                <div className="analytics-shell p-3 md:p-5 overflow-auto flex-1 space-y-5 w-full">
                   
-                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-200 w-full">
+                  <div className="glass-panel flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl w-full">
                     <div className="flex items-center space-x-2">
                       <Clock className="w-5 h-5 text-blue-600" />
-                      <span className="text-sm font-bold text-slate-700">เลือกช่วงเวลา/กะ:</span>
-                      <div className="inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50">
+                      <span className="text-sm font-bold text-slate-100">เลือกช่วงเวลา/กะ:</span>
+                      <div className="inline-flex flex-wrap rounded-xl border border-slate-700 bg-slate-950/70 p-1">
                         <button 
                           onClick={() => setSelectedShift('ALL')}
-                          className={`px-3 py-1 rounded-md text-xs font-bold ${selectedShift === 'ALL' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+                          className={`px-3 py-1 rounded-md text-xs font-bold ${selectedShift === 'ALL' ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                         >
                           ทั้งวัน (24 ชม.)
                         </button>
                         <button 
                           onClick={() => setSelectedShift('DAY')}
-                          className={`px-3 py-1 rounded-md text-xs font-bold flex items-center ${selectedShift === 'DAY' ? 'bg-amber-500 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+                          className={`px-3 py-1 rounded-md text-xs font-bold flex items-center ${selectedShift === 'DAY' ? 'bg-amber-500 text-white shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                         >
                           <Sun className="w-3.5 h-3.5 mr-1" /> กะกลางวัน (08:00 - 20:00)
                         </button>
                         <button 
                           onClick={() => setSelectedShift('NIGHT')}
-                          className={`px-3 py-1 rounded-md text-xs font-bold flex items-center ${selectedShift === 'NIGHT' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+                          className={`px-3 py-1 rounded-md text-xs font-bold flex items-center ${selectedShift === 'NIGHT' ? 'bg-indigo-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                         >
                           <Moon className="w-3.5 h-3.5 mr-1" /> กะกลางคืน (20:00 - 08:00)
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-4 text-xs font-medium text-slate-600">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => setShowChartEvents((value) => !value)} className={`dashboard-toggle ${showChartEvents ? 'is-active' : ''}`}>
+                        <span className="toggle-dot" /> {showChartEvents ? 'แสดงจุดหยุด/เริ่มเครื่อง' : 'ซ่อนจุดหยุด/เริ่มเครื่อง'}
+                      </button>
+                      <button type="button" onClick={() => setShowChartGradient((value) => !value)} className={`dashboard-toggle ${showChartGradient ? 'is-active' : ''}`}>
+                        <span className="toggle-dot" /> เงาสีใต้กราฟ
+                      </button>
+                    </div>
+
+                    <div className="flex items-center space-x-4 text-xs font-medium text-slate-300">
                       <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1.5"></span> ปกติ (Green)</span>
                       <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-1.5"></span> เฝ้าระวัง (Yellow)</span>
                       <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5"></span> วิกฤต (Red)</span>
@@ -674,26 +685,26 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
-                    <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200">
-                      <p className="text-[11px] font-bold text-slate-500 uppercase">อุณหภูมิลมเข้า IN (เฉลี่ย)</p>
+                    <div className="kpi-card kpi-orange">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">อุณหภูมิลมเข้า IN (เฉลี่ย)</p>
                       <p className="text-2xl font-extrabold text-orange-600 mt-1">{analytics.avgTempIn} <span className="text-xs font-normal text-slate-500">°C</span></p>
-                      <p className="text-[11px] text-slate-500 mt-1">เกณฑ์ปกติ: 140°C - 160°C</p>
+                      <p className="text-[11px] text-slate-400 mt-1">เกณฑ์ปกติ: 140°C - 160°C</p>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200">
-                      <p className="text-[11px] font-bold text-slate-500 uppercase">อุณหภูมิปลายปล่อง OUT (เฉลี่ย)</p>
+                    <div className="kpi-card kpi-amber">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">อุณหภูมิปลายปล่อง OUT (เฉลี่ย)</p>
                       <p className="text-2xl font-extrabold text-amber-600 mt-1">{analytics.avgTempOut} <span className="text-xs font-normal text-slate-500">°C</span></p>
-                      <p className="text-[11px] text-slate-500 mt-1">เกณฑ์ปกติ: 50°C - 65°C</p>
+                      <p className="text-[11px] text-slate-400 mt-1">เกณฑ์ปกติ: 50°C - 65°C</p>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200">
-                      <p className="text-[11px] font-bold text-slate-500 uppercase">ความชื้นแป้งหมาด WET (เฉลี่ย)</p>
+                    <div className="kpi-card kpi-indigo">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">ความชื้นแป้งหมาด WET (เฉลี่ย)</p>
                       <p className="text-2xl font-extrabold text-indigo-600 mt-1">{analytics.avgWetMoist} <span className="text-xs font-normal text-slate-500">%</span></p>
-                      <p className="text-[11px] text-slate-500 mt-1">เกณฑ์ปกติ: 30% - 38%</p>
+                      <p className="text-[11px] text-slate-400 mt-1">เกณฑ์ปกติ: 30% - 38%</p>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200">
-                      <p className="text-[11px] font-bold text-slate-500 uppercase">ความชื้นแป้งแห้ง PROD (เฉลี่ย)</p>
+                    <div className="kpi-card kpi-blue">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">ความชื้นแป้งแห้ง PROD (เฉลี่ย)</p>
                       <p className="text-2xl font-extrabold text-blue-600 mt-1">{analytics.avgProdMoist} <span className="text-xs font-normal text-slate-500">%</span></p>
                       <p className="text-[11px] text-emerald-600 font-semibold mt-1">เกณฑ์ปกติ: 11.0% - 12.5%</p>
                     </div>
@@ -701,70 +712,70 @@ export default function App() {
 
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
                     
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
-                      <div className="flex justify-between items-center border-b pb-2">
+                    <div className="chart-glass-card space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
-                          <h3 className="text-sm font-bold text-slate-800 flex items-center">
+                          <h3 className="text-sm font-bold text-slate-100 flex items-center">
                             <Thermometer className="w-4 h-4 mr-1.5 text-orange-500" /> 1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)
                           </h3>
-                          <p className="text-[10px] text-slate-500">{"ปกติ: 140-160°C | เหลือง: ต่ำกว่า 140°C หรือ 160°C ขึ้นไป | แดง: ต่ำกว่า 130°C"}</p>
+                          <p className="text-[10px] text-slate-400">{"ปกติ: 140-160°C | เหลือง: ต่ำกว่า 140°C หรือ 160°C ขึ้นไป | แดง: ต่ำกว่า 130°C"}</p>
                         </div>
                         <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
                           {analytics.avgTempIn} °C
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEventTimeline />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEventTimeline showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
-                      <div className="flex justify-between items-center border-b pb-2">
+                    <div className="chart-glass-card space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
-                          <h3 className="text-sm font-bold text-slate-800 flex items-center">
+                          <h3 className="text-sm font-bold text-slate-100 flex items-center">
                             <Thermometer className="w-4 h-4 mr-1.5 text-amber-500" /> 2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)
                           </h3>
-                          <p className="text-[10px] text-slate-500">{"ปกติ: 50°C - 65°C | นอกเกณฑ์: สีเหลือง"}</p>
+                          <p className="text-[10px] text-slate-400">{"ปกติ: 50°C - 65°C | นอกเกณฑ์: สีเหลือง"}</p>
                         </div>
                         <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                           {analytics.avgTempOut} °C
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
-                      <div className="flex justify-between items-center border-b pb-2">
+                    <div className="chart-glass-card space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
-                          <h3 className="text-sm font-bold text-slate-800 flex items-center">
+                          <h3 className="text-sm font-bold text-slate-100 flex items-center">
                             <Droplets className="w-4 h-4 mr-1.5 text-indigo-500" /> 3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)
                           </h3>
-                          <p className="text-[10px] text-slate-500">{"ปกติ: 30% - 38% | เหลือง: ต่ำกว่า 30% | แดง: มากกว่า 38%"}</p>
+                          <p className="text-[10px] text-slate-400">{"ปกติ: 30% - 38% | เหลือง: ต่ำกว่า 30% | แดง: มากกว่า 38%"}</p>
                         </div>
                         <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                           {analytics.avgWetMoist} %
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
-                      <div className="flex justify-between items-center border-b pb-2">
+                    <div className="chart-glass-card space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
-                          <h3 className="text-sm font-bold text-slate-800 flex items-center">
+                          <h3 className="text-sm font-bold text-slate-100 flex items-center">
                             <Droplets className="w-4 h-4 mr-1.5 text-blue-600" /> 4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)
                           </h3>
-                          <p className="text-[10px] text-slate-500">{"ปกติ: 11.0-12.5% | เหลือง: 0-10.9% หรือ 12.5-14% | แดง: มากกว่า 14%"}</p>
+                          <p className="text-[10px] text-slate-400">{"ปกติ: 11.0-12.5% | เหลือง: 0-10.9% หรือ 12.5-14% | แดง: มากกว่า 14%"}</p>
                         </div>
                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                           {analytics.avgProdMoist} %
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
                   </div>
 
-                  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                    <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center">
+                  <div className="glass-panel p-4 rounded-2xl">
+                    <h3 className="text-sm font-bold text-slate-100 mb-2 flex items-center">
                       <AlertTriangle className="w-4 h-4 mr-1.5 text-amber-500" /> รายงานความผิดปกติในกะนี้ ({analytics.anomalies.length} รายการ)
                     </h3>
                     {analytics.anomalies.length > 0 ? (
@@ -806,7 +817,7 @@ export default function App() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
               <div className="p-4 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
-                <h3 className="font-bold text-slate-800 flex items-center">
+                <h3 className="font-bold text-slate-100 flex items-center">
                   <Database className="w-5 h-5 mr-2 text-blue-600" /> คลังประวัติเอกสารย้อนหลัง
                 </h3>
                 <button onClick={() => setShowHistoryModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
@@ -878,6 +889,8 @@ function ProcessChart({
   unit,
   valueLabel,
   showEventTimeline = false,
+  showEvents = true,
+  showGradient = true,
 }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -971,10 +984,35 @@ function ProcessChart({
     ['stopDryer', 'startDryer', 'powerOutage', 'machineStop', 'clothAction'].includes(event.type)
   );
 
+  const makeSmoothPath = (points) => {
+    if (!points.length) return '';
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i += 1) {
+      const previous = points[i - 1];
+      const currentPoint = points[i];
+      const midX = (previous.x + currentPoint.x) / 2;
+      path += ` C ${midX} ${previous.y}, ${midX} ${currentPoint.y}, ${currentPoint.x} ${currentPoint.y}`;
+    }
+    return path;
+  };
+
+  const gradientId = `gradient-${field}`;
+  const glowId = `glow-${field}`;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-inner">
-      <svg className="block h-[270px] w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <div className="process-chart relative w-full overflow-hidden rounded-2xl border border-slate-700/80 bg-[#080d18] text-white">
+      <svg className="block h-[285px] w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.38" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+          </linearGradient>
+          <filter id={glowId} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="2.8" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
         <rect x={padding.left} y={getY(target[1])} width={plotWidth} height={getY(target[0]) - getY(target[1])} fill="#22c55e" opacity="0.12" />
         {ticks.map((tick) => (
           <g key={tick}>
@@ -984,7 +1022,7 @@ function ProcessChart({
         ))}
 
 
-        {events.map(({ index, x, event }, eventIndex) => {
+        {showEvents && events.map(({ index, x, event }, eventIndex) => {
           const labelY = 16 + (eventIndex % 2) * 14;
           return (
             <g key={`event-${index}-${event.type}-${event.time}`}>
@@ -1022,7 +1060,16 @@ function ProcessChart({
           );
         })}
 
-        {segments.map((points, i) => <polyline key={`solid-${i}`} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.map((point) => `${point.x},${point.y}`).join(' ')} />)}
+        {segments.map((points, i) => {
+          const path = makeSmoothPath(points);
+          const areaPath = `${path} L ${points[points.length - 1].x} ${baselineY} L ${points[0].x} ${baselineY} Z`;
+          return (
+            <g key={`solid-${i}`}>
+              {showGradient && <path d={areaPath} fill={`url(#${gradientId})`} opacity="0.85" />}
+              <path d={path} fill="none" stroke={lineColor} strokeWidth="3.4" strokeLinejoin="round" strokeLinecap="round" filter={`url(#${glowId})`} />
+            </g>
+          );
+        })}
         {dashedBridges.map((points, i) => (
           <line
             key={`bridge-${i}`}
@@ -1042,13 +1089,18 @@ function ProcessChart({
           const x = getX(index);
           const status = getStatus(row[field]);
           return <g key={index}>
-            {y !== null && <circle cx={x} cy={y} r={hoverIndex === index ? 6 : 4} fill={status.color} stroke="#fff" strokeWidth="1.5" />}
+            {y !== null && (
+              <g className={status.label === 'วิกฤต' ? 'critical-point' : status.label === 'เฝ้าระวัง' ? 'warning-point' : ''}>
+                <circle cx={x} cy={y} r={hoverIndex === index ? 7 : 5} fill="#08111f" stroke={lineColor} strokeWidth="3" filter={`url(#${glowId})`} />
+                <circle cx={x} cy={y} r={hoverIndex === index ? 3 : 2.3} fill={status.color} />
+              </g>
+            )}
             <rect x={x - Math.max(plotWidth / dataset.length / 2, 12)} y={padding.top} width={Math.max(plotWidth / dataset.length, 24)} height={plotHeight + 35} fill="transparent" onMouseEnter={() => setHoverIndex(index)} onMouseLeave={() => setHoverIndex(null)} />
             <text x={x} y={height - 18} fill={hoverIndex === index ? '#f8fafc' : '#94a3b8'} fontSize="10" textAnchor="middle" fontWeight={hoverIndex === index ? '700' : '400'}>{row.time}</text>
           </g>;
         })}
       </svg>
-      {showEventTimeline && timelineEvents.length > 0 && (
+      {showEvents && showEventTimeline && timelineEvents.length > 0 && (
         <div className="border-t border-slate-800 bg-slate-900/90 px-3 py-2">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
             <span>เหตุการณ์ในช่วงที่เลือก</span>
@@ -1071,7 +1123,7 @@ function ProcessChart({
         const row = dataset[hoverIndex];
         const event = normalizeProcessEvent(row);
         const status = getStatus(row[field]);
-        return <div className="pointer-events-none absolute left-3 top-3 z-20 min-w-[210px] rounded-lg border border-slate-600 bg-slate-900/95 p-3 text-xs shadow-2xl">
+        return <div className="chart-tooltip pointer-events-none absolute left-3 top-3 z-20 min-w-[220px] rounded-xl border border-white/10 bg-slate-950/90 p-3 text-xs shadow-2xl backdrop-blur-xl">
           <p className="font-bold text-white">{row.time} น. · {resolvedTypes[hoverIndex] || '-'}</p>
           <p className="mt-1 font-bold" style={{ color: lineColor }}>{valueLabel}: {parseNumericValue(row[field]) === null ? '-' : row[field]} {unit}</p>
           <p className="mt-1 text-slate-300">สถานะ: <span style={{ color: status.color }} className="font-bold">{status.label}</span></p>
