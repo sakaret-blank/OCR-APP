@@ -943,15 +943,27 @@ function ProcessChart({
     .sort((a, b) => a.minute - b.minute);
 
   const segments = [];
+  const dashedBridges = [];
   let current = [];
+  let previousValidPoint = null;
+  let gapStarted = false;
+
   dataset.forEach((row, index) => {
     const y = getY(row[field]);
     if (y === null) {
       if (current.length > 1) segments.push(current);
       current = [];
+      if (previousValidPoint) gapStarted = true;
       return;
     }
-    current.push({ x: getX(index), y, minute: rowMinutes[index] });
+
+    const point = { x: getX(index), y, minute: rowMinutes[index] };
+    if (gapStarted && previousValidPoint) {
+      dashedBridges.push([previousValidPoint, point]);
+      gapStarted = false;
+    }
+    current.push(point);
+    previousValidPoint = point;
   });
   if (current.length > 1) segments.push(current);
 
@@ -972,8 +984,59 @@ function ProcessChart({
         ))}
 
 
+        {events.map(({ index, x, event }, eventIndex) => {
+          const labelY = 16 + (eventIndex % 2) * 14;
+          return (
+            <g key={`event-${index}-${event.type}-${event.time}`}>
+              <line
+                x1={x}
+                y1={padding.top - 4}
+                x2={x}
+                y2={baselineY}
+                stroke={event.color}
+                strokeWidth="1.4"
+                strokeDasharray="5 5"
+                opacity="0.95"
+              />
+              <text
+                x={x}
+                y={labelY}
+                fill={event.color}
+                fontSize="9"
+                textAnchor="middle"
+                fontWeight="700"
+              >
+                {event.time}
+              </text>
+              <text
+                x={x}
+                y={labelY + 10}
+                fill={event.color}
+                fontSize="8"
+                textAnchor="middle"
+                fontWeight="600"
+              >
+                {event.label}
+              </text>
+            </g>
+          );
+        })}
 
-        {segments.map((points, i) => <polyline key={i} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.map((point) => `${point.x},${point.y}`).join(' ')} />)}
+        {segments.map((points, i) => <polyline key={`solid-${i}`} fill="none" stroke={lineColor} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points.map((point) => `${point.x},${point.y}`).join(' ')} />)}
+        {dashedBridges.map((points, i) => (
+          <line
+            key={`bridge-${i}`}
+            x1={points[0].x}
+            y1={points[0].y}
+            x2={points[1].x}
+            y2={points[1].y}
+            stroke={lineColor}
+            strokeWidth="2.4"
+            strokeDasharray="6 6"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
+        ))}
         {dataset.map((row, index) => {
           const y = getY(row[field]);
           const x = getX(index);
