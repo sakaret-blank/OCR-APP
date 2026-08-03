@@ -11,6 +11,7 @@ import {
   EyeOff,
   Loader2,
   Moon,
+  Mail,
   Printer,
   Save,
   ScanLine,
@@ -559,6 +560,93 @@ export default function App() {
 
   const analytics = calculateAnalytics(currentFilteredData);
 
+  const getShiftLabel = () => {
+    if (selectedShift === 'DAY') return 'กะกลางวัน (08:00 - 20:00 น.)';
+    if (selectedShift === 'NIGHT') return 'กะกลางคืน (20:00 - 08:00 น.)';
+    return 'ทั้งวัน (24 ชั่วโมง)';
+  };
+
+  const getReportFileBaseName = () => {
+    const safeDate = String(docInfo.date || new Date().toLocaleDateString('th-TH'))
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, '_');
+    const safeCode = String(docInfo.code || 'FM-PD-010')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, '_');
+    return `รายงานการอบแป้ง_${safeDate}_${safeCode}`;
+  };
+
+  const buildFormalEmailSummary = () => {
+    const criticalCount = analytics.anomalies.filter((item) => item.level === 'red').length;
+    const warningCount = analytics.anomalies.filter((item) => item.level === 'yellow').length;
+    const overallStatus = criticalCount > 0
+      ? 'พบค่าระดับวิกฤตที่ควรตรวจสอบ'
+      : warningCount > 0
+        ? 'พบค่าที่ควรเฝ้าระวัง'
+        : 'ค่าพารามิเตอร์อยู่ในเกณฑ์มาตรฐาน';
+
+    const anomalyLines = analytics.anomalies.length > 0
+      ? analytics.anomalies.slice(0, 12).map((item, index) =>
+          `${index + 1}. เวลา ${item.time} น. ชนิดแป้ง ${item.pType}: ${item.issue}`
+        ).join('\n')
+      : 'ไม่พบรายการค่าผิดปกติจากข้อมูลที่บันทึก';
+
+    return [
+      'เรียน ผู้เกี่ยวข้อง',
+      '',
+      `ขอส่งรายงานการวิเคราะห์กระบวนการอบแป้ง ประจำวันที่ ${docInfo.date}`,
+      `รหัสเอกสาร: ${docInfo.code}`,
+      `ช่วงเวลาที่วิเคราะห์: ${getShiftLabel()}`,
+      '',
+      'สรุปผลการวิเคราะห์',
+      `1. อุณหภูมิลมร้อนเข้าเฉลี่ย ${analytics.avgTempIn} °C (เกณฑ์ 140-160 °C)`,
+      `2. อุณหภูมิปลายปล่องเฉลี่ย ${analytics.avgTempOut} °C (เกณฑ์ 50-65 °C)`,
+      `3. ความชื้นแป้งหมาดเฉลี่ย ${analytics.avgWetMoist}% (เกณฑ์ 30-38%)`,
+      `4. ความชื้นแป้งแห้งเฉลี่ย ${analytics.avgProdMoist}% (เกณฑ์ 11.0-12.5%)`,
+      `5. จำนวนรายการเฝ้าระวัง ${warningCount} รายการ และระดับวิกฤต ${criticalCount} รายการ`,
+      `6. ผลการประเมินโดยรวม: ${overallStatus}`,
+      '',
+      'รายการที่ควรตรวจสอบ',
+      anomalyLines,
+      '',
+      'โปรดตรวจสอบรายละเอียดจากเอกสารรายงานที่แนบมากับอีเมลฉบับนี้',
+      '',
+      'ขอแสดงความนับถือ',
+      'ผู้จัดทำรายงาน',
+    ].join('\n');
+  };
+
+  const handleEmailReport = () => {
+    window.alert('อย่าลืมแนบไฟล์เอกสารรายงานก่อนกดส่งอีเมล');
+
+    const to = 'admin_cms@kengsenggroup.com';
+    const cc = [
+      'admin.asst.manager-cms@kengsenggroup.com',
+      'tana.r@kengsenggroup.com',
+    ].join(',');
+    const subject = `รายงานการวิเคราะห์กระบวนการอบแป้ง ประจำวันที่ ${docInfo.date}`;
+    const body = buildFormalEmailSummary();
+    const mailto = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+  };
+
+  const handlePrintReport = () => {
+    const previousTitle = document.title;
+    const reportTitle = getReportFileBaseName();
+    document.title = reportTitle;
+
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+
+    window.addEventListener('afterprint', restoreTitle);
+    window.print();
+    window.setTimeout(restoreTitle, 3000);
+  };
+
   if (appState === 'scanning') {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center space-y-4">
@@ -640,12 +728,20 @@ export default function App() {
                 </button>
 
                 {activeTab === 'analytics' && (
-                  <button 
-                    onClick={() => window.print()}
-                    className="px-2.5 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-700 flex items-center text-xs font-semibold shadow-sm"
-                  >
-                    <Printer className="w-3.5 h-3.5 mr-1" /> พิมพ์ PDF
-                  </button>
+                  <>
+                    <button
+                      onClick={handleEmailReport}
+                      className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-xs font-semibold shadow-sm"
+                    >
+                      <Mail className="w-3.5 h-3.5 mr-1" /> ส่งอีเมล
+                    </button>
+                    <button 
+                      onClick={handlePrintReport}
+                      className="px-2.5 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-700 flex items-center text-xs font-semibold shadow-sm"
+                    >
+                      <Printer className="w-3.5 h-3.5 mr-1" /> พิมพ์ PDF
+                    </button>
+                  </>
                 )}
               </>
             )}
