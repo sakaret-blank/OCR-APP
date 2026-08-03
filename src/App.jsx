@@ -109,6 +109,139 @@ const parseNumericValue = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+// คำมาตรฐานที่ QC ใช้บ่อยในช่องความชื้น
+const MOISTURE_TEXT_OPTIONS = {
+  wetCakeMoisture: [
+    'แป้งไม่ลง',
+    'แซะสลัด',
+  ],
+  productMoisture: [
+    'แป้งไม่ลง',
+    'แป้งไม่ลง หยุดรอความเหนียว',
+    'แป้งไม่ลง หยุดซ่อม',
+  ],
+};
+
+// ลดความแตกต่างจากช่องว่าง เครื่องหมาย และอักขระที่ OCR มักอ่านเกินมา
+const compactOcrText = (value) => String(value ?? '')
+  .normalize('NFC')
+  .toLowerCase()
+  .replace(/[\s.,:;!?'"`~_\-–—/\\|()[\]{}]+/g, '')
+  .replace(/[๐-๙]/g, (digit) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(digit)))
+  .trim();
+
+const levenshteinDistance = (left, right) => {
+  const a = Array.from(left);
+  const b = Array.from(right);
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+
+  return previous[b.length];
+};
+
+const similarityScore = (left, right) => {
+  if (!left || !right) return 0;
+  const longest = Math.max(Array.from(left).length, Array.from(right).length);
+  return longest === 0 ? 1 : 1 - (levenshteinDistance(left, right) / longest);
+};
+
+// แก้คำไทยที่ OCR อ่านเพี้ยน โดยไม่แตะค่าตัวเลขจริง
+const normalizeMoistureText = (value, field) => {
+  const raw = String(value ?? '').trim();
+  if (!raw || parseNumericValue(raw) !== null) {
+    return { value: raw, corrected: false, confidence: 1 };
+  }
+
+  const compact = compactOcrText(raw);
+  const options = MOISTURE_TEXT_OPTIONS[field] || [];
+  if (!compact || options.length === 0) {
+    return { value: raw, corrected: false, confidence: 0 };
+  }
+
+  // กฎตามความหมาย ช่วยกรณีลายมือเพี้ยนหลายตัวแต่ยังจับคำสำคัญได้
+  if (field === 'wetCakeMoisture') {
+    if ((compact.includes('แซะ') || compact.includes('แชะ') || compact.includes('เซะ')) &&
+        (compact.includes('สลัด') || compact.includes('สลัต') || compact.includes('สลต'))) {
+      return { value: 'แซะสลัด', corrected: raw !== 'แซะสลัด', confidence: 0.98 };
+    }
+    if ((compact.includes('แป้ง') || compact.includes('แปง')) &&
+        (compact.includes('ไม่ลง') || compact.includes('ไมลง') || compact.includes('ม่ลง'))) {
+      return { value: 'แป้งไม่ลง', corrected: raw !== 'แป้งไม่ลง', confidence: 0.98 };
+    }
+  }
+
+  if (field === 'productMoisture') {
+    const looksLikeNoProduct = (compact.includes('แป้ง') || compact.includes('แปง')) &&
+      (compact.includes('ไม่ลง') || compact.includes('ไมลง') || compact.includes('ม่ลง'));
+    const looksLikeViscosityWait = compact.includes('ความเหนียว') || compact.includes('เหนียว') || compact.includes('รอความ');
+    const looksLikeRepair = compact.includes('ซ่อม') || compact.includes('ช่อม') || compact.includes('ส่อม');
+
+    if (looksLikeViscosityWait) {
+      return { value: 'แป้งไม่ลง หยุดรอความเหนียว', corrected: raw !== 'แป้งไม่ลง หยุดรอความเหนียว', confidence: 0.98 };
+    }
+    if (looksLikeRepair) {
+      return { value: 'แป้งไม่ลง หยุดซ่อม', corrected: raw !== 'แป้งไม่ลง หยุดซ่อม', confidence: 0.98 };
+    }
+    if (looksLikeNoProduct) {
+      return { value: 'แป้งไม่ลง', corrected: raw !== 'แป้งไม่ลง', confidence: 0.98 };
+    }
+  }
+
+  const candidates = options.map((option) => ({
+    option,
+    score: similarityScore(compact, compactOcrText(option)),
+  })).sort((a, b) => b.score - a.score);
+
+  const best = candidates[0];
+  // เกณฑ์ค่อนข้างเข้ม เพื่อไม่เปลี่ยนข้อความอื่นของ QC โดยผิดความหมาย
+  if (best && best.score >= 0.72) {
+    return {
+      value: best.option,
+      corrected: raw !== best.option,
+      confidence: best.score,
+    };
+  }
+
+  return { value: raw, corrected: false, confidence: best?.score || 0 };
+};
+
+const normalizeOcrRow = (row, idx) => {
+  const wetResult = normalizeMoistureText(row.wetCakeMoisture, 'wetCakeMoisture');
+  const productResult = normalizeMoistureText(row.productMoisture, 'productMoisture');
+  const unreadableFields = Array.isArray(row.unreadableFields) ? [...row.unreadableFields] : [];
+
+  // ถ้าเป็นข้อความที่ไม่ตรงคำมาตรฐานและความมั่นใจต่ำ ให้คงข้อความเดิมและเตือนผู้ใช้ตรวจสอบ
+  if (wetResult.value && parseNumericValue(wetResult.value) === null && wetResult.confidence < 0.72 && !unreadableFields.includes('wetCakeMoisture')) {
+    unreadableFields.push('wetCakeMoisture');
+  }
+  if (productResult.value && parseNumericValue(productResult.value) === null && productResult.confidence < 0.72 && !unreadableFields.includes('productMoisture')) {
+    unreadableFields.push('productMoisture');
+  }
+
+  return {
+    ...row,
+    id: idx + 1,
+    wetCakeMoisture: wetResult.value,
+    productMoisture: productResult.value,
+    unreadableFields,
+    ocrCorrections: {
+      wetCakeMoisture: wetResult.corrected,
+      productMoisture: productResult.corrected,
+    },
+  };
+};
+
 const extractEventTime = (...values) => {
   for (const value of values) {
     const text = String(value || '');
@@ -253,11 +386,7 @@ export default function App() {
         const newCode = result.documentCode || docInfo.code;
         setDocInfo({ date: newDate, code: newCode });
         
-        const formattedRows = result.rows.map((row, idx) => ({
-          ...row,
-          id: idx + 1,
-          unreadableFields: Array.isArray(row.unreadableFields) ? row.unreadableFields : []
-        }));
+        const formattedRows = result.rows.map((row, idx) => normalizeOcrRow(row, idx));
         
         setData(formattedRows);
         autoSaveToHistory(newDate, newCode, formattedRows);
