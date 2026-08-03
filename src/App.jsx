@@ -218,6 +218,111 @@ const normalizeMoistureText = (value, field) => {
   return { value: raw, corrected: false, confidence: best?.score || 0 };
 };
 
+
+
+const CANONICAL_REPORT_TIMES = [
+  '08.00', '09.00', '10.00', '11.00', '12.00', '13.00',
+  '14.00', '15.00', '16.00', '17.00', '18.00', '19.00',
+  '20.00', '21.00', '22.00', '23.00', '24.00', '01.00',
+  '02.00', '03.00', '04.00', '05.00', '06.00', '07.00',
+];
+
+const normalizeReportTime = (value) => {
+  const raw = String(value ?? '').trim();
+  const match = raw.match(/^(?:เวลา\s*)?([0-2]?\d)[:.]([0-5]\d)$/i);
+  if (!match) return '';
+  let hour = Number(match[1]);
+  if (hour === 0 && raw.startsWith('24')) hour = 24;
+  return `${String(hour).padStart(2, '0')}.${match[2]}`;
+};
+
+const FIELD_RANGES = {
+  hotAirIn: [80, 200],
+  hotAirOut: [20, 100],
+  speed: [0, 100],
+  wetCakeMoisture: [15, 50],
+  productMoisture: [5, 25],
+};
+
+const validateNumericField = (value, field) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { value: '', suspicious: false };
+  const numeric = parseNumericValue(raw);
+  if (numeric === null) return { value: raw, suspicious: false };
+  const range = FIELD_RANGES[field];
+  if (!range) return { value: raw, suspicious: false };
+  const suspicious = numeric < range[0] || numeric > range[1];
+  return { value: suspicious ? '' : raw, suspicious };
+};
+
+// จัดผล OCR กลับเข้ากับ 24 แถวตามเวลา เพื่อลดปัญหาแถวไหลหรือข้อมูลเลื่อนตำแหน่ง
+const alignOcrRowsToCanonicalTimes = (rows) => {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const byTime = new Map();
+  const duplicateTimes = new Set();
+
+  sourceRows.forEach((row) => {
+    const time = normalizeReportTime(row?.time);
+    if (!CANONICAL_REPORT_TIMES.includes(time)) return;
+    if (byTime.has(time)) duplicateTimes.add(time);
+    else byTime.set(time, row);
+  });
+
+  return CANONICAL_REPORT_TIMES.map((time, index) => {
+    const source = byTime.get(time) || sourceRows[index] || {};
+    const sourceTime = normalizeReportTime(source.time);
+    const alignmentWarning = sourceTime && sourceTime !== time;
+    const unreadableFields = Array.isArray(source.unreadableFields)
+      ? [...source.unreadableFields]
+      : [];
+
+    if ((alignmentWarning || duplicateTimes.has(time)) && !unreadableFields.includes('time')) {
+      unreadableFields.push('time');
+    }
+
+    const validated = {};
+    ['hotAirIn', 'hotAirOut', 'speed', 'wetCakeMoisture', 'productMoisture'].forEach((field) => {
+      const check = validateNumericField(source[field], field);
+      validated[field] = check.value;
+      if (check.suspicious && !unreadableFields.includes(field)) unreadableFields.push(field);
+    });
+
+    return normalizeOcrRow({
+      ...source,
+      ...validated,
+      time,
+      unreadableFields,
+    }, index);
+  });
+};
+
+// ตรวจจับค่าที่กระโดดผิดธรรมชาติ เพื่อให้ผู้ใช้ตรวจซ้ำ โดยไม่แก้ค่าจริงให้อัตโนมัติ
+const flagIsolatedNumericOutliers = (rows) => {
+  const fields = ['hotAirIn', 'hotAirOut', 'speed', 'wetCakeMoisture', 'productMoisture'];
+  const thresholds = {
+    hotAirIn: 12,
+    hotAirOut: 10,
+    speed: 15,
+    wetCakeMoisture: 4,
+    productMoisture: 2,
+  };
+
+  return rows.map((row, index) => {
+    const unreadableFields = Array.isArray(row.unreadableFields) ? [...row.unreadableFields] : [];
+    fields.forEach((field) => {
+      const current = parseNumericValue(row[field]);
+      const previous = index > 0 ? parseNumericValue(rows[index - 1]?.[field]) : null;
+      const next = index < rows.length - 1 ? parseNumericValue(rows[index + 1]?.[field]) : null;
+      if (current === null || previous === null || next === null) return;
+      const neighbourAverage = (previous + next) / 2;
+      if (Math.abs(current - neighbourAverage) >= thresholds[field] && !unreadableFields.includes(field)) {
+        unreadableFields.push(field);
+      }
+    });
+    return { ...row, unreadableFields };
+  });
+};
+
 const normalizeOcrRow = (row, idx) => {
   const wetResult = normalizeMoistureText(row.wetCakeMoisture, 'wetCakeMoisture');
   const productResult = normalizeMoistureText(row.productMoisture, 'productMoisture');
@@ -390,12 +495,13 @@ export default function App() {
         throw new Error(result.error || `HTTP Error ${response.status}`);
       }
 
+      let formattedRows = [];
       if (result.rows && Array.isArray(result.rows)) {
         const newDate = result.reportDate || docInfo.date;
         const newCode = result.documentCode || docInfo.code;
         setDocInfo({ date: newDate, code: newCode });
         
-        const formattedRows = result.rows.map((row, idx) => normalizeOcrRow(row, idx));
+        formattedRows = flagIsolatedNumericOutliers(alignOcrRowsToCanonicalTimes(result.rows));
         
         setData(formattedRows);
         setAnalysisSummary('');
@@ -408,7 +514,10 @@ export default function App() {
       }
       
       setAppState('ready');
-      setSaveStatus('สแกนและบันทึกประวัติเรียบร้อยแล้ว');
+      const reviewCount = formattedRows.reduce((sum, row) => sum + (row.unreadableFields?.length || 0), 0);
+      setSaveStatus(reviewCount > 0
+        ? `สแกนเสร็จแล้ว พบ ${reviewCount} ช่องที่ควรตรวจสอบกับเอกสารต้นฉบับ`
+        : 'สแกนและบันทึกประวัติเรียบร้อยแล้ว');
     } catch (error) {
       console.error("Scanning failed:", error);
       setStatusMessage(`⚠️ เกิดข้อผิดพลาดในการสแกน: ${error.message}`);
