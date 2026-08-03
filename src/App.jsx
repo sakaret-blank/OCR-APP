@@ -53,57 +53,30 @@ try {
   }
 };
 
-
-// เตรียมภาพสำหรับ OCR: ปรับขนาดและครอปจริงเป็น 4 ส่วนก่อนส่งไป Worker
-// การครอปช่วยลด Row Drift เพราะ Gemini เห็นครั้งละ 8 แถวเท่านั้น
-const prepareOcrImages = (file, maxWidth = 2200) => {
+// บีบอัดรูปภาพก่อนส่ง API
+const compressImage = (file, maxWidth = 2400) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.readAsDataURL(file);
     reader.onload = (event) => {
       const img = new Image();
-      img.onload = () => {
-        try {
-          const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-          const width = Math.round(img.width * scale);
-          const height = Math.round(img.height * scale);
-
-          const source = document.createElement('canvas');
-          source.width = width;
-          source.height = height;
-          const sourceCtx = source.getContext('2d', { willReadFrequently: true });
-          sourceCtx.drawImage(img, 0, 0, width, height);
-
-          const cropToBase64 = (startRatio, endRatio) => {
-            const y = Math.max(0, Math.floor(height * startRatio));
-            const cropHeight = Math.max(1, Math.min(height - y, Math.ceil(height * (endRatio - startRatio))));
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = cropHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, width, cropHeight);
-            ctx.filter = 'contrast(1.12) saturate(0.82) brightness(1.03)';
-            ctx.drawImage(source, 0, y, width, cropHeight, 0, 0, width, cropHeight);
-            return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-          };
-
-          resolve({
-            headerImageBase64: cropToBase64(0.00, 0.22),
-            sectionImagesBase64: [
-              cropToBase64(0.18, 0.45), // 08.00–15.00 พร้อมหัวคอลัมน์
-              cropToBase64(0.42, 0.70), // 16.00–23.00
-              cropToBase64(0.66, 0.90), // 24.00–07.00
-            ],
-          });
-        } catch (error) {
-          reject(error);
-        }
-      };
-      img.onerror = () => reject(new Error('ไม่สามารถเปิดรูปภาพที่เลือกได้'));
       img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ratio = maxWidth / img.width;
+        const width = img.width > maxWidth ? maxWidth : img.width;
+        const height = img.width > maxWidth ? img.height * ratio : img.height;
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        const base64String = canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+        resolve(base64String);
+      };
     };
-    reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์รูปภาพได้'));
-    reader.readAsDataURL(file);
+    reader.onerror = (error) => reject(error);
   });
 };
 
@@ -279,7 +252,7 @@ const validateNumericField = (value, field) => {
   const range = FIELD_RANGES[field];
   if (!range) return { value: raw, suspicious: false };
   const suspicious = numeric < range[0] || numeric > range[1];
-  return { value: suspicious ? '' : raw, suspicious };
+  return { value: raw, suspicious };
 };
 
 // จัดผล OCR กลับเข้ากับ 24 แถวตามเวลา เพื่อลดปัญหาแถวไหลหรือข้อมูลเลื่อนตำแหน่ง
@@ -296,7 +269,7 @@ const alignOcrRowsToCanonicalTimes = (rows) => {
   });
 
   return CANONICAL_REPORT_TIMES.map((time, index) => {
-    const source = byTime.get(time) || {}; // ห้ามใช้ fallback ตาม index เพราะทำให้ข้อมูลเลื่อนแถว
+    const source = byTime.get(time) || {};
     const sourceTime = normalizeReportTime(source.time);
     const alignmentWarning = sourceTime && sourceTime !== time;
     const unreadableFields = Array.isArray(source.unreadableFields)
@@ -350,14 +323,6 @@ const flagIsolatedNumericOutliers = (rows) => {
   });
 };
 
-const normalizeBinaryMark = (value) => {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  // ช่อง DW และ Filter ในแบบฟอร์มนี้มีเพียงเครื่องหมาย / หรือว่าง เลข 1 มักเกิดจาก OCR อ่าน / ผิด
-  if (['/', '／', '\\', '|', '1', 'I', 'l'].includes(raw)) return '/';
-  return '';
-};
-
 const normalizeOcrRow = (row, idx) => {
   const wetResult = normalizeMoistureText(row.wetCakeMoisture, 'wetCakeMoisture');
   const productResult = normalizeMoistureText(row.productMoisture, 'productMoisture');
@@ -374,16 +339,8 @@ const normalizeOcrRow = (row, idx) => {
   return {
     ...row,
     id: idx + 1,
-    dw1: normalizeBinaryMark(row.dw1),
-    dw2: normalizeBinaryMark(row.dw2),
-    dw3: normalizeBinaryMark(row.dw3),
-    dw4: normalizeBinaryMark(row.dw4),
-    dw5: normalizeBinaryMark(row.dw5),
-    changeDwFilter: normalizeBinaryMark(row.changeDwFilter),
     wetCakeMoisture: wetResult.value,
     productMoisture: productResult.value,
-    rowConfidence: Number.isFinite(Number(row.rowConfidence)) ? Number(row.rowConfidence) : null,
-    reviewReasons: Array.isArray(row.reviewReasons) ? row.reviewReasons : [],
     unreadableFields,
     ocrCorrections: {
       wetCakeMoisture: wetResult.corrected,
@@ -519,11 +476,11 @@ export default function App() {
     setAppState('scanning');
     
     try {
-      const ocrImages = await prepareOcrImages(selectedFile);
+      const base64Image = await compressImage(selectedFile);
       const response = await fetch(WORKER_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ocrImages)
+        body: JSON.stringify({ imageBase64: base64Image })
       });
 
       const responseText = await response.text();
