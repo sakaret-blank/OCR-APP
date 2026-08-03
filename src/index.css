@@ -145,3 +145,132 @@ button {
   .critical-point,
   .chart-tooltip { animation: none !important; }
 }
+
+/* Print report layout v9: deterministic A4 pages and controlled footer */
+.print-source-footer {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 9mm 8mm 15mm;
+  }
+
+  html,
+  body,
+  #root {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-report-main-header {
+    position: static !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-report {
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #070b14 !important;
+  }
+
+  .print-control-bar {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 3mm !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-chart-grid {
+    display: block !important;
+  }
+
+  .print-chart-card {
+    width: 100% !important;
+    margin: 0 0 4mm !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+  }
+
+  .print-chart-card > div:first-child,
+  .print-chart-card h3,
+  .print-chart-card p {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* v10: หน้า 2 วางกราฟ 2 และ 3 ในหน้าเดียวกัน */
+  .print-chart-2,
+  .print-chart-3 {
+    margin-bottom: 2.5mm !important;
+  }
+
+  .print-chart-2 .process-chart svg,
+  .print-chart-3 .process-chart svg {
+    height: 225px !important;
+  }
+
+  .print-chart-2 .process-chart,
+  .print-chart-3 .process-chart {
+    border-radius: 10px !important;
+  }
+
+  /* หน้า 3: กราฟ 4 และสรุปความผิดปกติ */
+  .print-chart-4 .process-chart svg {
+    height: 235px !important;
+  }
+
+  .print-anomaly-summary {
+    font-size: 9pt !important;
+  }
+
+  .print-page-break {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
+  .print-anomaly-summary {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 10mm !important;
+  }
+
+  .print-source-footer {
+    display: block !important;
+    position: fixed;
+    left: 8mm;
+    right: 8mm;
+    bottom: 3mm;
+    padding-top: 2mm;
+    border-top: 0.3mm solid rgba(148, 163, 184, 0.55);
+    background: #ffffff;
+    color: #475569;
+    font-size: 8pt;
+    line-height: 1.25;
+    text-align: center;
+    z-index: 9999;
+  }
+
+  .chart-tooltip,
+  .dashboard-toggle,
+  .toggle-dot {
+    display: none !important;
+  }
+}

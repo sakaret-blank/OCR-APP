@@ -445,7 +445,7 @@ export default function App() {
       <div className="w-full bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-[98vh]">
         
         {/* Header Bar */}
-        <header className="bg-white border-b border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <header className="print-report-main-header bg-white border-b border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center space-x-3">
             <img
               src="/app-icon-192.png"
@@ -642,9 +642,9 @@ export default function App() {
               )}
 
               {activeTab === 'analytics' && (
-                <div className="analytics-shell p-3 md:p-5 overflow-auto flex-1 space-y-5 w-full">
+                <div className="analytics-shell print-report p-3 md:p-5 overflow-auto flex-1 space-y-5 w-full">
                   
-                  <div className="glass-panel flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl w-full">
+                  <div className="glass-panel print-control-bar flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl w-full">
                     <div className="flex items-center space-x-2">
                       <Clock className="w-5 h-5 text-blue-600" />
                       <span className="text-sm font-bold text-slate-100">เลือกช่วงเวลา/กะ:</span>
@@ -686,7 +686,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
+                  <div className="print-kpi-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
                     <div className="kpi-card kpi-orange">
                       <p className="text-[11px] font-bold text-slate-400 uppercase">อุณหภูมิลมเข้า IN (เฉลี่ย)</p>
                       <p className="text-2xl font-extrabold text-orange-600 mt-1">{analytics.avgTempIn} <span className="text-xs font-normal text-slate-500">°C</span></p>
@@ -712,9 +712,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
+                  <div className="print-chart-grid grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
                     
-                    <div className="chart-glass-card space-y-3">
+                    <div className="chart-glass-card print-chart-card print-chart-1 space-y-3">
                       <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
                           <h3 className="text-sm font-bold text-slate-100 flex items-center">
@@ -729,7 +729,7 @@ export default function App() {
                       <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEventTimeline showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
-                    <div className="chart-glass-card space-y-3">
+                    <div className="chart-glass-card print-chart-card print-chart-2 print-page-break space-y-3">
                       <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
                           <h3 className="text-sm font-bold text-slate-100 flex items-center">
@@ -744,7 +744,7 @@ export default function App() {
                       <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
-                    <div className="chart-glass-card space-y-3">
+                    <div className="chart-glass-card print-chart-card print-chart-3 space-y-3">
                       <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
                           <h3 className="text-sm font-bold text-slate-100 flex items-center">
@@ -759,7 +759,7 @@ export default function App() {
                       <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} />
                     </div>
 
-                    <div className="chart-glass-card space-y-3">
+                    <div className="chart-glass-card print-chart-card print-chart-4 print-page-break space-y-3">
                       <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
                         <div>
                           <h3 className="text-sm font-bold text-slate-100 flex items-center">
@@ -776,7 +776,7 @@ export default function App() {
 
                   </div>
 
-                  <div className="glass-panel p-4 rounded-2xl">
+                  <div className="glass-panel print-anomaly-summary p-4 rounded-2xl">
                     <h3 className="text-sm font-bold text-slate-100 mb-2 flex items-center">
                       <AlertTriangle className="w-4 h-4 mr-1.5 text-amber-500" /> รายงานความผิดปกติในกะนี้ ({analytics.anomalies.length} รายการ)
                     </h3>
@@ -807,6 +807,10 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  <footer className="print-source-footer" aria-label="แหล่งที่มาของรายงาน">
+                    แหล่งที่มา: Windows, Mac/PC, OPPO (และยี่ห้ออื่น)/Android, iPad, iPhone/iOS
+                  </footer>
 
                 </div>
               )}
