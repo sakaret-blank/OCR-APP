@@ -269,7 +269,7 @@ const alignOcrRowsToCanonicalTimes = (rows) => {
   });
 
   return CANONICAL_REPORT_TIMES.map((time, index) => {
-    const source = byTime.get(time) || sourceRows[index] || {};
+    const source = byTime.get(time) || {}; // ห้ามใช้ fallback ตาม index เพราะทำให้ข้อมูลเลื่อนแถว
     const sourceTime = normalizeReportTime(source.time);
     const alignmentWarning = sourceTime && sourceTime !== time;
     const unreadableFields = Array.isArray(source.unreadableFields)
@@ -323,6 +323,14 @@ const flagIsolatedNumericOutliers = (rows) => {
   });
 };
 
+const normalizeBinaryMark = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  // ช่อง DW และ Filter ในแบบฟอร์มนี้มีเพียงเครื่องหมาย / หรือว่าง เลข 1 มักเกิดจาก OCR อ่าน / ผิด
+  if (['/', '／', '\\', '|', '1', 'I', 'l'].includes(raw)) return '/';
+  return '';
+};
+
 const normalizeOcrRow = (row, idx) => {
   const wetResult = normalizeMoistureText(row.wetCakeMoisture, 'wetCakeMoisture');
   const productResult = normalizeMoistureText(row.productMoisture, 'productMoisture');
@@ -339,8 +347,16 @@ const normalizeOcrRow = (row, idx) => {
   return {
     ...row,
     id: idx + 1,
+    dw1: normalizeBinaryMark(row.dw1),
+    dw2: normalizeBinaryMark(row.dw2),
+    dw3: normalizeBinaryMark(row.dw3),
+    dw4: normalizeBinaryMark(row.dw4),
+    dw5: normalizeBinaryMark(row.dw5),
+    changeDwFilter: normalizeBinaryMark(row.changeDwFilter),
     wetCakeMoisture: wetResult.value,
     productMoisture: productResult.value,
+    rowConfidence: Number.isFinite(Number(row.rowConfidence)) ? Number(row.rowConfidence) : null,
+    reviewReasons: Array.isArray(row.reviewReasons) ? row.reviewReasons : [],
     unreadableFields,
     ocrCorrections: {
       wetCakeMoisture: wetResult.corrected,
