@@ -53,30 +53,57 @@ try {
   }
 };
 
-// บีบอัดรูปภาพก่อนส่ง API
-const compressImage = (file, maxWidth = 1600) => {
+
+// เตรียมภาพสำหรับ OCR: ปรับขนาดและครอปจริงเป็น 4 ส่วนก่อนส่งไป Worker
+// การครอปช่วยลด Row Drift เพราะ Gemini เห็นครั้งละ 8 แถวเท่านั้น
+const prepareOcrImages = (file, maxWidth = 2200) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
     reader.onload = (event) => {
       const img = new Image();
-      img.src = event.target.result;
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ratio = maxWidth / img.width;
-        const width = img.width > maxWidth ? maxWidth : img.width;
-        const height = img.width > maxWidth ? img.height * ratio : img.height;
+        try {
+          const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+          const width = Math.round(img.width * scale);
+          const height = Math.round(img.height * scale);
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        const base64String = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-        resolve(base64String);
+          const source = document.createElement('canvas');
+          source.width = width;
+          source.height = height;
+          const sourceCtx = source.getContext('2d', { willReadFrequently: true });
+          sourceCtx.drawImage(img, 0, 0, width, height);
+
+          const cropToBase64 = (startRatio, endRatio) => {
+            const y = Math.max(0, Math.floor(height * startRatio));
+            const cropHeight = Math.max(1, Math.min(height - y, Math.ceil(height * (endRatio - startRatio))));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = cropHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, cropHeight);
+            ctx.filter = 'contrast(1.12) saturate(0.82) brightness(1.03)';
+            ctx.drawImage(source, 0, y, width, cropHeight, 0, 0, width, cropHeight);
+            return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+          };
+
+          resolve({
+            headerImageBase64: cropToBase64(0.00, 0.22),
+            sectionImagesBase64: [
+              cropToBase64(0.18, 0.45), // 08.00–15.00 พร้อมหัวคอลัมน์
+              cropToBase64(0.42, 0.70), // 16.00–23.00
+              cropToBase64(0.66, 0.90), // 24.00–07.00
+            ],
+          });
+        } catch (error) {
+          reject(error);
+        }
       };
+      img.onerror = () => reject(new Error('ไม่สามารถเปิดรูปภาพที่เลือกได้'));
+      img.src = event.target.result;
     };
-    reader.onerror = (error) => reject(error);
+    reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์รูปภาพได้'));
+    reader.readAsDataURL(file);
   });
 };
 
@@ -492,11 +519,11 @@ export default function App() {
     setAppState('scanning');
     
     try {
-      const base64Image = await compressImage(selectedFile);
+      const ocrImages = await prepareOcrImages(selectedFile);
       const response = await fetch(WORKER_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64Image })
+        body: JSON.stringify(ocrImages)
       });
 
       const responseText = await response.text();
