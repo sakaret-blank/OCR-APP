@@ -11,25 +11,39 @@ const TIMES = [
   '02.00', '03.00', '04.00', '05.00', '06.00', '07.00',
 ];
 
+// ใช้รุ่นปัจจุบันก่อน และสลับรุ่นสำรองหากบัญชีเรียกรุ่นแรกไม่ได้
 const MODELS_TO_TRY = ['gemini-3.6-flash', 'gemini-3.5-flash'];
 
 const CORE_FIELDS = [
-  'hotAirIn', 'hotAirOut', 'speed',
-  'wetCakeMoisture', 'productMoisture',
+  'productType',
+  'hotAirIn',
+  'hotAirOut',
+  'speed',
+  'wetCakeMoisture',
+  'productMoisture',
+  'remark',
 ];
 
-const ALL_FIELDS = [
-  'productType', 'dw1', 'dw2', 'dw3', 'dw4', 'dw5',
-  ...CORE_FIELDS, 'changeDwFilter', 'remark',
+const MARK_FIELDS = [
+  'dw1', 'dw2', 'dw3', 'dw4', 'dw5', 'changeDwFilter',
 ];
 
 const emptyRow = (time) => ({
   time,
   productType: '',
-  dw1: '', dw2: '', dw3: '', dw4: '', dw5: '',
-  hotAirIn: '', hotAirOut: '', speed: '',
-  wetCakeMoisture: '', productMoisture: '',
-  changeDwFilter: '', remark: '', unreadableFields: [],
+  dw1: '',
+  dw2: '',
+  dw3: '',
+  dw4: '',
+  dw5: '',
+  hotAirIn: '',
+  hotAirOut: '',
+  speed: '',
+  wetCakeMoisture: '',
+  productMoisture: '',
+  changeDwFilter: '',
+  remark: '',
+  unreadableFields: [],
 });
 
 function jsonResponse(data, status = 200) {
@@ -43,22 +57,39 @@ function jsonResponse(data, status = 200) {
 }
 
 function cleanText(value) {
-  return value === null || value === undefined ? '' : String(value).trim();
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
 }
 
 function normalizeTime(value) {
   const raw = cleanText(value).replace(':', '.');
   const match = raw.match(/^(\d{1,2})\.(\d{2})$/);
+
   if (!match || match[2] !== '00') return '';
+
   const hour = Number(match[1]);
   if (hour < 0 || hour > 24) return '';
+
   return `${String(hour).padStart(2, '0')}.00`;
 }
 
-function normalizeMark(value) {
+// Gemini ต้องประกาศช่องว่างด้วย "-" แล้ว Worker จึงลบออกภายหลัง
+function dashToBlank(value) {
   const raw = cleanText(value);
+  if (!raw || /^(?:-|—|–|−|null|none|n\/a)$/i.test(raw)) return '';
+  return raw;
+}
+
+function normalizeMark(value) {
+  const raw = dashToBlank(value);
   if (!raw) return '';
-  return /^(\/|1|I|i|l|\||✓|✔|√|⁄)$/u.test(raw) ? '/' : '';
+
+  if (/^(?:\/|1|I|i|l|\||✓|✔|√|⁄)$/u.test(raw)) {
+    return '/';
+  }
+
+  // ค่าที่ไม่ใช่เครื่องหมายที่ยอมรับ จะไม่ถูกนำมาแสดง
+  return '';
 }
 
 function parseJsonSafely(text) {
@@ -71,11 +102,13 @@ function parseJsonSafely(text) {
   try {
     return JSON.parse(cleaned);
   } catch {
-    const startObject = cleaned.indexOf('{');
-    const endObject = cleaned.lastIndexOf('}');
-    if (startObject >= 0 && endObject > startObject) {
-      return JSON.parse(cleaned.slice(startObject, endObject + 1));
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
     }
+
     throw new Error('ไม่สามารถแปลงผล OCR เป็น JSON ได้');
   }
 }
@@ -91,7 +124,10 @@ async function callGemini({ apiKey, imageBase64, systemInstruction, prompt }) {
 
   for (const model of MODELS_TO_TRY) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const url =
+        `https://generativelanguage.googleapis.com/v1beta/models/` +
+        `${model}:generateContent`;
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -99,14 +135,23 @@ async function callGemini({ apiKey, imageBase64, systemInstruction, prompt }) {
           'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          contents: [{
-            role: 'user',
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
-            ],
-          }],
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: imageBase64,
+                  },
+                },
+              ],
+            },
+          ],
           generationConfig: {
             responseMimeType: 'application/json',
             maxOutputTokens: 16384,
@@ -116,17 +161,28 @@ async function callGemini({ apiKey, imageBase64, systemInstruction, prompt }) {
 
       const raw = await response.text();
       let apiData;
-      try { apiData = JSON.parse(raw); }
-      catch { throw new Error(`${model}: API ส่งข้อมูลผิดรูปแบบ`); }
 
-      if (!response.ok) {
-        throw new Error(`${model}: ${apiData?.error?.message || `HTTP ${response.status}`}`);
+      try {
+        apiData = JSON.parse(raw);
+      } catch {
+        throw new Error(`${model}: API ส่งข้อมูลตอบกลับผิดรูปแบบ`);
       }
 
-      const text = extractCandidateText(apiData);
-      if (!text) throw new Error(`${model}: ไม่พบผล OCR`);
+      if (!response.ok) {
+        throw new Error(
+          `${model}: ${apiData?.error?.message || `HTTP ${response.status}`}`
+        );
+      }
 
-      return { model, data: parseJsonSafely(text) };
+      const candidateText = extractCandidateText(apiData);
+      if (!candidateText) {
+        throw new Error(`${model}: ไม่พบผล OCR`);
+      }
+
+      return {
+        model,
+        data: parseJsonSafely(candidateText),
+      };
     } catch (error) {
       console.error(error);
       errors.push(error?.message || `${model}: เกิดข้อผิดพลาด`);
@@ -138,237 +194,320 @@ async function callGemini({ apiKey, imageBase64, systemInstruction, prompt }) {
 
 function rowsByTime(sourceRows) {
   const map = new Map();
-  for (const row of Array.isArray(sourceRows) ? sourceRows : []) {
-    const time = normalizeTime(row?.time);
-    if (TIMES.includes(time) && !map.has(time)) map.set(time, row);
+
+  for (const source of Array.isArray(sourceRows) ? sourceRows : []) {
+    const time = normalizeTime(source?.time);
+    if (!TIMES.includes(time) || map.has(time)) continue;
+    map.set(time, source);
   }
+
   return map;
 }
 
 function normalizeMainResult(result) {
   const sourceMap = rowsByTime(result?.rows);
-  return {
-    reportDate: cleanText(result?.reportDate),
-    documentCode: cleanText(result?.documentCode) || 'FM-PD-010 Rev.1',
-    rows: TIMES.map((time) => {
-      const source = sourceMap.get(time);
-      const row = emptyRow(time);
-      if (!source) {
-        row.unreadableFields = ['missingRow'];
-        return row;
-      }
-      for (const field of ['productType', ...CORE_FIELDS, 'remark']) {
-        row[field] = cleanText(source[field]);
-      }
-      row.unreadableFields = Array.isArray(source?.unreadableFields)
-        ? [...new Set(source.unreadableFields.map(cleanText).filter(Boolean))]
-        : [];
+
+  const rows = TIMES.map((time) => {
+    const source = sourceMap.get(time);
+    const row = emptyRow(time);
+
+    if (!source) {
+      row.unreadableFields = ['missingRow'];
       return row;
-    }),
+    }
+
+    for (const field of CORE_FIELDS) {
+      row[field] = dashToBlank(source[field]);
+    }
+
+    row.unreadableFields = Array.isArray(source?.unreadableFields)
+      ? [
+          ...new Set(
+            source.unreadableFields
+              .map(cleanText)
+              .filter((field) => CORE_FIELDS.includes(field))
+          ),
+        ]
+      : [];
+
+    return row;
+  });
+
+  return {
+    reportDate: dashToBlank(result?.reportDate),
+    documentCode:
+      dashToBlank(result?.documentCode) || 'FM-PD-010 Rev.1',
+    rows,
   };
 }
 
-function mergeMarks(rows, markResult) {
-  const markMap = rowsByTime(markResult?.rows);
+function mergeMarkResult(rows, result) {
+  const sourceMap = rowsByTime(result?.rows);
+
   return rows.map((row) => {
-    const source = markMap.get(row.time);
+    const source = sourceMap.get(row.time);
     if (!source) return row;
-    return {
-      ...row,
-      dw1: normalizeMark(source.dw1),
-      dw2: normalizeMark(source.dw2),
-      dw3: normalizeMark(source.dw3),
-      dw4: normalizeMark(source.dw4),
-      dw5: normalizeMark(source.dw5),
-      changeDwFilter: normalizeMark(source.changeDwFilter),
-    };
-  });
-}
-
-function populatedCoreCount(row) {
-  return CORE_FIELDS.reduce((count, field) => count + (cleanText(row[field]) ? 1 : 0), 0);
-}
-
-function findSuspiciousTimes(rows) {
-  const suspicious = new Set();
-
-  rows.forEach((row, index) => {
-    const count = populatedCoreCount(row);
-    const prevCount = index > 0 ? populatedCoreCount(rows[index - 1]) : 0;
-    const nextCount = index < rows.length - 1 ? populatedCoreCount(rows[index + 1]) : 0;
-    const unreadableCore = row.unreadableFields.some((field) => CORE_FIELDS.includes(field));
-    const hasRemark = Boolean(cleanText(row.remark));
-
-    // แถวหายหรือเหลือเพียงบางค่า ทั้งที่แถวข้างเคียงมีข้อมูลครบ
-    if ((count === 0 && prevCount >= 3 && nextCount >= 3) ||
-        (count <= 2 && prevCount >= 4 && nextCount >= 4) ||
-        unreadableCore) {
-      suspicious.add(row.time);
-    }
-
-    // แถวที่มี Stop/Start/เหตุการณ์ ต้องตรวจซ้ำ เพราะมักมีข้อความล้ำเส้นและค่าบางส่วนก่อนหยุด
-    if (hasRemark || /stop|start|หยุด|เริ่ม|ไฟดับ|ซ่อม/i.test(row.remark)) {
-      suspicious.add(row.time);
-      if (index > 0) suspicious.add(rows[index - 1].time);
-      if (index < rows.length - 1) suspicious.add(rows[index + 1].time);
-    }
-  });
-
-  return [...suspicious].slice(0, 10);
-}
-
-function mergeVerifiedRows(rows, verifyResult, suspiciousTimes) {
-  const verifyMap = rowsByTime(verifyResult?.rows);
-  const suspiciousSet = new Set(suspiciousTimes);
-
-  return rows.map((row) => {
-    if (!suspiciousSet.has(row.time)) return row;
-    const verified = verifyMap.get(row.time);
-    if (!verified) return row;
 
     const merged = { ...row };
-    const verifiedUnreadable = new Set(
-      Array.isArray(verified.unreadableFields)
-        ? verified.unreadableFields.map(cleanText).filter(Boolean)
-        : []
-    );
-
-    // เติมเฉพาะช่องที่รอบหลักว่าง หรือรอบหลักระบุว่าอ่านไม่ชัด
-    for (const field of ['productType', ...CORE_FIELDS, 'remark']) {
-      const current = cleanText(row[field]);
-      const candidate = cleanText(verified[field]);
-      const wasUnreadable = row.unreadableFields.includes(field) || row.unreadableFields.includes('missingRow');
-      if ((!current || wasUnreadable) && candidate && !verifiedUnreadable.has(field)) {
-        merged[field] = candidate;
-      }
+    for (const field of MARK_FIELDS) {
+      merged[field] = normalizeMark(source[field]);
     }
-
-    merged.unreadableFields = [...new Set([
-      ...row.unreadableFields.filter((field) => cleanText(merged[field]) === ''),
-      ...verifiedUnreadable,
-    ])];
-
     return merged;
   });
 }
 
+function structuralWarnings(rows) {
+  const warnings = [];
+
+  for (const row of rows) {
+    if (row.unreadableFields.includes('missingRow')) {
+      warnings.push(`ไม่พบผล OCR สำหรับแถว ${row.time}`);
+    }
+  }
+
+  const row1200 = rows.find((row) => row.time === '12.00');
+  if (row1200) {
+    const hasAnyCore = [
+      row1200.hotAirIn,
+      row1200.hotAirOut,
+      row1200.speed,
+      row1200.wetCakeMoisture,
+      row1200.productMoisture,
+    ].some(Boolean);
+
+    if (!hasAnyCore) {
+      warnings.push('แถว 12.00 ไม่มีค่ากระบวนการ กรุณาตรวจสอบกับภาพต้นฉบับ');
+    }
+  }
+
+  return warnings;
+}
+
 const MAIN_SYSTEM = `
-You are a high-precision OCR transcription engine for an industrial DRYING PROCESS OPERATION REPORT.
-Read only these fields: report date, document code, PRODUCT TYPE, HOT AIR IN, HOT AIR OUT, SPEED, WET CAKE MOISTURE, PRODUCT MOISTURE, and REMARK.
-Do NOT read DW1-DW5 or Change Dryer Filter in this pass.
-Use the printed TIME column as the absolute row anchor. Read horizontally within each exact grid row.
-Return exactly 24 rows in this order: ${TIMES.join(', ')}.
-Blank cells must be empty strings. Never infer, repeat, average, translate, or copy values from another row.
-Keep ditto marks (" or 〃) exactly as visible. Never expand them.
-If uncertain, return an empty string and add the field name to unreadableFields.
-Return JSON only, with keys reportDate, documentCode, rows.
+You are a strict, high-precision OCR data transcriber for an industrial form named DRYING PROCESS OPERATION REPORT.
+
+Read only these fields:
+- reportDate
+- documentCode
+- productType
+- hotAirIn
+- hotAirOut
+- speed
+- wetCakeMoisture
+- productMoisture
+- remark
+
+Do not read DW1-DW5 or Change Dryer Filter in this pass.
+
+CRITICAL RULES:
+
+1. TRACK ROW BY ROW
+Use the pre-printed TIME column as the absolute anchor.
+Read horizontally inside the exact printed grid row.
+Return exactly 24 rows in this exact order:
+${TIMES.join(', ')}
+Never skip a row.
+Never combine rows.
+Never shift values upward or downward.
+Check row 12.00 especially carefully before moving to row 13.00.
+
+2. NO INK = DASH
+For every requested cell, first look for visible pen ink inside that exact cell.
+If there is no handwriting in the cell, output the string "-".
+Do not output null.
+Do not leave a JSON property missing.
+Do not infer or copy a value from another row.
+
+3. NO PATTERN COMPLETION
+Repeated values do not authorize copying.
+Only transcribe numbers visibly written in that exact row.
+Blank downtime rows must remain "-".
+Never fill a blank because nearby rows contain normal operating values.
+
+4. PRODUCT TYPE
+Copy the visible text exactly.
+If a ditto mark such as " or 〃 is visible, output that visible mark exactly.
+Do not expand it into the product name.
+Do not translate it.
+
+5. NUMBERS
+Return every number as a STRING.
+Preserve every decimal point exactly.
+Do not round or normalize unusual values.
+Pay special attention to 1/7, 3/5, 5/8, 8/9 and decimal points.
+
+6. REMARK
+Copy only handwriting visibly located in the REMARK cell of that row.
+If no remark ink exists, output "-".
+Do not duplicate the same remark into another row.
+
+7. UNREADABLE INK
+If ink exists but cannot be read confidently:
+- output "-"
+- add the field name to unreadableFields
+Never guess.
+
+Return one JSON object only with this structure:
+{
+  "reportDate": "-",
+  "documentCode": "-",
+  "rows": [
+    {
+      "time": "08.00",
+      "productType": "-",
+      "hotAirIn": "-",
+      "hotAirOut": "-",
+      "speed": "-",
+      "wetCakeMoisture": "-",
+      "productMoisture": "-",
+      "remark": "-",
+      "unreadableFields": []
+    }
+  ]
+}
+
+Return exactly 24 rows. Return no markdown and no explanation.
 `;
 
 const MAIN_PROMPT = `
-Transcribe the full document image once. Focus only on the main numeric/text fields and remarks.
-Each row object must contain:
-time, productType, hotAirIn, hotAirOut, speed, wetCakeMoisture, productMoisture, remark, unreadableFields.
-Do not include guessed values. Preserve blank downtime cells.
+Transcribe the complete document image once.
+
+Before returning the JSON, perform this physical tracking sequence:
+1. Locate 08.00 in the printed TIME column.
+2. Trace horizontally across that exact row.
+3. Move down exactly one printed grid row to 09.00.
+4. Continue one row at a time without jumping.
+5. Pause at 12.00 and verify that its values come from the 12.00 row, not 13.00.
+6. Continue through 07.00.
+
+For each cell, explicitly decide whether visible pen ink exists.
+No ink must be represented by "-".
+Return only JSON.
 `;
 
 const MARK_SYSTEM = `
-You are reading only mark cells in the same industrial table.
-Ignore all numbers and text except the printed TIME anchors, DW1, DW2, DW3, DW4, DW5, and Change Dryer Filter.
-For every visible slash/check mark return "/". For a blank cell return "".
-Never return 1, I, l, or |. Never copy a mark into an adjacent column or row.
-Return exactly 24 rows in this order: ${TIMES.join(', ')}.
-Return JSON only with rows containing time, dw1, dw2, dw3, dw4, dw5, changeDwFilter.
+You are a strict visual mark transcriber for the same DRYING PROCESS OPERATION REPORT.
+
+Read only:
+- DW1
+- DW2
+- DW3
+- DW4
+- DW5
+- changeDwFilter
+
+Use the printed TIME column as the absolute row anchor.
+Return exactly 24 rows in this exact order:
+${TIMES.join(', ')}
+
+For every mark cell:
+- If a slash/check/pen mark is visibly present inside the exact cell, output "/".
+- If there is no pen ink, output "-".
+- Never infer a mark from neighboring rows.
+- Never fill all DW columns merely because nearby rows contain marks.
+- Never output the number 1.
+- Read DW1, DW2, DW3, DW4, DW5 separately.
+
+Return only this JSON structure:
+{
+  "rows": [
+    {
+      "time": "08.00",
+      "dw1": "-",
+      "dw2": "-",
+      "dw3": "-",
+      "dw4": "-",
+      "dw5": "-",
+      "changeDwFilter": "-"
+    }
+  ]
+}
+
+Return exactly 24 rows. Return no markdown and no explanation.
 `;
 
 const MARK_PROMPT = `
-Inspect the complete image, but transcribe only DW RUNNING marks and Change Dryer Filter marks.
-Trace each printed time row horizontally and each mark column vertically before answering.
+Inspect only the DW RUNNING columns and Change Dryer Filter column.
+Track one printed time row at a time from 08.00 through 07.00.
+For each individual cell, output "/" only when pen ink is visibly present; otherwise output "-".
+Return only JSON.
 `;
-
-function verificationSystem(times) {
-  return `
-You are performing a second-pass verification of ONLY these time rows: ${times.join(', ')}.
-Use the full original image, but ignore every other row.
-For each requested time, trace horizontally inside the exact printed row and transcribe:
-productType, hotAirIn, hotAirOut, speed, wetCakeMoisture, productMoisture, remark.
-Blank means "". Never infer from neighboring rows. Preserve ditto marks exactly.
-If uncertain, return "" and add the field to unreadableFields.
-Return JSON only with a rows array. Do not return unrequested rows.
-`;
-}
 
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, {
+        status: 204,
+        headers: CORS_HEADERS,
+      });
     }
+
     if (request.method !== 'POST') {
       return jsonResponse({ error: 'Method not allowed' }, 405);
     }
 
     try {
-      if (!env.GEMINI_API_KEY) throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Cloudflare');
+      if (!env.GEMINI_API_KEY) {
+        throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Cloudflare');
+      }
 
-      const body = await request.json();
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        throw new Error('ข้อมูล Request ไม่ใช่ JSON ที่ถูกต้อง');
+      }
+
       const imageBase64 = cleanText(body?.imageBase64).replace(
         /^data:image\/[a-zA-Z0-9.+-]+;base64,/,
         ''
       );
-      if (!imageBase64) throw new Error('ไม่พบข้อมูลรูปภาพ imageBase64');
 
-      // Pass 1: ตัวเลข ข้อความ และ Remark
-      const main = await callGemini({
+      if (!imageBase64) {
+        throw new Error('ไม่พบข้อมูลรูปภาพ imageBase64');
+      }
+
+      // รอบหลัก: ตัวเลข ชนิดแป้ง และ Remark
+      const mainPass = await callGemini({
         apiKey: env.GEMINI_API_KEY,
         imageBase64,
         systemInstruction: MAIN_SYSTEM,
         prompt: MAIN_PROMPT,
       });
-      const normalizedMain = normalizeMainResult(main.data);
 
-      // Pass 2: อ่านเฉพาะเครื่องหมาย DW และ Filter เพื่อลดการรบกวนตัวเลข
-      const marks = await callGemini({
+      let normalized = normalizeMainResult(mainPass.data);
+
+      // รอบเครื่องหมาย: แยกออกจากตัวเลขเพื่อลดการรบกวนสายตา
+      const markPass = await callGemini({
         apiKey: env.GEMINI_API_KEY,
         imageBase64,
         systemInstruction: MARK_SYSTEM,
         prompt: MARK_PROMPT,
       });
-      let rows = mergeMarks(normalizedMain.rows, marks.data);
 
-      // Pass 3: ตรวจซ้ำเฉพาะแถวที่ขาด/ไม่ชัด/มีเหตุการณ์
-      const suspiciousTimes = findSuspiciousTimes(rows);
-      let verifyModel = '';
-      if (suspiciousTimes.length > 0) {
-        const verification = await callGemini({
-          apiKey: env.GEMINI_API_KEY,
-          imageBase64,
-          systemInstruction: verificationSystem(suspiciousTimes),
-          prompt: `Verify only these rows: ${suspiciousTimes.join(', ')}. Return no other rows.`,
-        });
-        verifyModel = verification.model;
-        rows = mergeVerifiedRows(rows, verification.data, suspiciousTimes);
-      }
+      normalized = {
+        ...normalized,
+        rows: mergeMarkResult(normalized.rows, markPass.data),
+      };
 
-      const reviewCellCount = rows.reduce(
-        (sum, row) => sum + row.unreadableFields.length,
-        0
-      );
+      // ไม่มีรอบที่ 3 และไม่มีการเติมค่าจากแถวข้างเคียงโดยเด็ดขาด
+      const warnings = structuralWarnings(normalized.rows);
 
       return jsonResponse({
-        reportDate: normalizedMain.reportDate,
-        documentCode: normalizedMain.documentCode,
-        rows,
-        ocrMeta: {
-          strategy: 'multi-pass-full-image-v18',
-          mainModel: main.model,
-          markModel: marks.model,
-          verifyModel,
-          verifiedTimes: suspiciousTimes,
-          reviewCellCount,
-        },
+        ...normalized,
+        modelUsed: mainPass.model,
+        markModelUsed: markPass.model,
+        ocrMode: 'full-image-no-ink-dash-v19',
+        warnings,
       });
     } catch (error) {
       console.error(error);
-      return jsonResponse({ error: error?.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ' }, 500);
+      return jsonResponse(
+        {
+          error: error?.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ',
+        },
+        500
+      );
     }
   },
 };
