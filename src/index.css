@@ -146,6 +146,11 @@ button {
   .chart-tooltip { animation: none !important; }
 }
 
+
+.analysis-summary-print {
+  display: none;
+}
+
 /* Print report layout v9: deterministic A4 pages and controlled footer */
 .print-source-footer {
   display: none;
@@ -250,6 +255,32 @@ button {
     break-inside: avoid;
     page-break-inside: avoid;
     margin-bottom: 10mm !important;
+  }
+
+
+  .print-analysis-summary {
+    break-inside: auto;
+    page-break-inside: auto;
+    margin-bottom: 10mm !important;
+  }
+
+  .print-analysis-summary button,
+  .print-analysis-summary .analysis-summary-editor,
+  .print-analysis-summary > div:first-child p,
+  .print-analysis-summary > div:last-child {
+    display: none !important;
+  }
+
+  .print-analysis-summary .analysis-summary-print {
+    display: block !important;
+    white-space: pre-wrap !important;
+    color: #0f172a !important;
+    background: #ffffff !important;
+    border: 0.3mm solid #cbd5e1;
+    border-radius: 2mm;
+    padding: 4mm;
+    font-size: 9pt !important;
+    line-height: 1.45 !important;
   }
 
   .print-source-footer {

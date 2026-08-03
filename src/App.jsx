@@ -9,6 +9,7 @@ import {
   Droplets,
   Eye,
   EyeOff,
+  FileText,
   Loader2,
   Moon,
   Mail,
@@ -291,6 +292,9 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [analysisSummary, setAnalysisSummary] = useState('');
+  const [summaryGeneratedAt, setSummaryGeneratedAt] = useState('');
+  const [summaryNeedsRefresh, setSummaryNeedsRefresh] = useState(false);
 
   const [imageSrc, setImageSrc] = useState(null); 
   const [selectedFile, setSelectedFile] = useState(null);
@@ -325,6 +329,7 @@ export default function App() {
     }
     setData(newData);
     setSaveStatus('มีการแก้ไขยังไม่ได้บันทึก');
+    if (analysisSummary) setSummaryNeedsRefresh(true);
   };
 
   const autoFixDittoMarks = () => {
@@ -354,6 +359,9 @@ export default function App() {
       setAppState('uploaded');
       setData(generateEmptyData());
       setDocInfo({ date: new Date().toLocaleDateString('th-TH'), code: 'FM-PD-010 Rev.1' });
+      setAnalysisSummary('');
+      setSummaryGeneratedAt('');
+      setSummaryNeedsRefresh(false);
     }
     e.target.value = null;
   };
@@ -390,6 +398,9 @@ export default function App() {
         const formattedRows = result.rows.map((row, idx) => normalizeOcrRow(row, idx));
         
         setData(formattedRows);
+        setAnalysisSummary('');
+        setSummaryGeneratedAt('');
+        setSummaryNeedsRefresh(false);
         autoSaveToHistory(newDate, newCode, formattedRows);
         setShowImagePane(false);
       } else {
@@ -435,6 +446,9 @@ export default function App() {
   const loadReportFromHistory = (record) => {
     setDocInfo({ date: record.date, code: record.code });
     setData(record.rows);
+    setAnalysisSummary('');
+    setSummaryGeneratedAt('');
+    setSummaryNeedsRefresh(false);
     setShowHistoryModal(false);
     setStatusMessage(`โหลดข้อมูลประวัติวันที่ ${record.date} เรียบร้อยแล้ว`);
     setTimeout(() => setStatusMessage(''), 3000);
@@ -578,6 +592,58 @@ export default function App() {
     return `รายงานการอบแป้ง_${safeDate}_${safeCode}`;
   };
 
+  const buildAnalysisSummary = () => {
+    const criticalItems = analytics.anomalies.filter((item) => item.level === 'red');
+    const warningItems = analytics.anomalies.filter((item) => item.level === 'yellow');
+    const overallStatus = criticalItems.length > 0
+      ? 'พบค่าระดับวิกฤตที่ต้องตรวจสอบและติดตามการแก้ไข'
+      : warningItems.length > 0
+        ? 'กระบวนการโดยรวมอยู่ในระดับเฝ้าระวัง และควรติดตามค่าที่เบี่ยงเบนจากเกณฑ์'
+        : 'กระบวนการอบแป้งอยู่ในเกณฑ์ควบคุมตามค่าพารามิเตอร์ที่บันทึก';
+
+    const observations = analytics.anomalies.length > 0
+      ? analytics.anomalies.slice(0, 10).map((item, index) =>
+          `${index + 1}. เวลา ${item.time} น. ชนิดแป้ง ${item.pType}: ${item.issue}`
+        ).join('\n')
+      : 'ไม่พบค่าพารามิเตอร์ที่อยู่นอกเกณฑ์จากข้อมูลที่บันทึกในช่วงเวลานี้';
+
+    return [
+      'สรุปผลการวิเคราะห์กระบวนการอบแป้ง',
+      `ประจำวันที่ ${docInfo.date} | ${getShiftLabel()}`,
+      `รหัสเอกสาร: ${docInfo.code}`,
+      '',
+      'ผลการประเมินภาพรวม',
+      overallStatus,
+      '',
+      'ค่าพารามิเตอร์เฉลี่ย',
+      `• อุณหภูมิลมร้อนเข้า ${analytics.avgTempIn} °C (เกณฑ์มาตรฐาน 140-160 °C)`,
+      `• อุณหภูมิปลายปล่อง ${analytics.avgTempOut} °C (เกณฑ์มาตรฐาน 50-65 °C)`,
+      `• ความชื้นแป้งหมาด ${analytics.avgWetMoist}% (เกณฑ์มาตรฐาน 30-38%)`,
+      `• ความชื้นแป้งแห้ง ${analytics.avgProdMoist}% (เกณฑ์มาตรฐาน 11.0-12.5%)`,
+      '',
+      `พบรายการเฝ้าระวัง ${warningItems.length} รายการ และรายการระดับวิกฤต ${criticalItems.length} รายการ`,
+      '',
+      'ข้อสังเกตจากข้อมูล',
+      observations,
+      '',
+      'ข้อเสนอแนะ',
+      criticalItems.length > 0
+        ? 'ควรตรวจสอบสาเหตุของค่าระดับวิกฤต ดำเนินการแก้ไข และบันทึกผลการติดตามอย่างเป็นระบบ'
+        : warningItems.length > 0
+          ? 'ควรติดตามค่าที่เบี่ยงเบนจากเกณฑ์ในรอบการผลิตถัดไป และตรวจสอบความสัมพันธ์กับเหตุการณ์การเดินเครื่อง'
+          : 'ควรรักษาเงื่อนไขการเดินเครื่องในระดับปัจจุบัน และติดตามแนวโน้มอย่างต่อเนื่อง',
+    ].join('\n');
+  };
+
+  const handleGenerateAnalysisSummary = () => {
+    setAnalysisSummary(buildAnalysisSummary());
+    setSummaryGeneratedAt(new Date().toLocaleString('th-TH'));
+    setSummaryNeedsRefresh(false);
+    window.setTimeout(() => {
+      document.getElementById('analysis-summary-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
   const buildFormalEmailSummary = () => {
     const criticalCount = analytics.anomalies.filter((item) => item.level === 'red').length;
     const warningCount = analytics.anomalies.filter((item) => item.level === 'yellow').length;
@@ -627,7 +693,9 @@ export default function App() {
       'tana.r@kengsenggroup.com',
     ].join(',');
     const subject = `รายงานการวิเคราะห์กระบวนการอบแป้ง ประจำวันที่ ${docInfo.date}`;
-    const body = buildFormalEmailSummary();
+    const body = analysisSummary
+      ? `${analysisSummary}\n\nโปรดตรวจสอบรายละเอียดจากเอกสารรายงานที่แนบมากับอีเมลฉบับนี้\n\nขอแสดงความนับถือ\nผู้จัดทำรายงาน`
+      : buildFormalEmailSummary();
     const mailto = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
   };
@@ -729,6 +797,12 @@ export default function App() {
 
                 {activeTab === 'analytics' && (
                   <>
+                    <button
+                      onClick={handleGenerateAnalysisSummary}
+                      className="px-2.5 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 flex items-center text-xs font-semibold shadow-sm"
+                    >
+                      <FileText className="w-3.5 h-3.5 mr-1" /> จัดทำสรุปผลการวิเคราะห์
+                    </button>
                     <button
                       onClick={handleEmailReport}
                       className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-xs font-semibold shadow-sm"
@@ -1032,6 +1106,52 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  <section id="analysis-summary-section" className="glass-panel print-analysis-summary p-4 rounded-2xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-100 flex items-center">
+                          <FileText className="w-4 h-4 mr-1.5 text-violet-400" /> จัดทำสรุปผลการวิเคราะห์
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-1">สร้างบทสรุปภาษาทางการจากข้อมูลที่แสดงในแดชบอร์ด และสามารถตรวจแก้ก่อนพิมพ์หรือส่งอีเมล</p>
+                      </div>
+                      <button
+                        onClick={handleGenerateAnalysisSummary}
+                        className="px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+                      >
+                        <FileText className="w-4 h-4 mr-1.5" />
+                        {analysisSummary ? 'จัดทำสรุปใหม่' : 'จัดทำสรุปผลการวิเคราะห์'}
+                      </button>
+                    </div>
+
+                    {summaryNeedsRefresh && (
+                      <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                        ข้อมูลมีการเปลี่ยนแปลง กรุณาจัดทำสรุปผลการวิเคราะห์ใหม่ก่อนพิมพ์หรือส่งอีเมล
+                      </div>
+                    )}
+
+                    {analysisSummary ? (
+                      <>
+                        <textarea
+                          value={analysisSummary}
+                          onChange={(event) => { setAnalysisSummary(event.target.value); setSummaryNeedsRefresh(false); }}
+                          className="analysis-summary-editor w-full min-h-[280px] rounded-xl border border-slate-600 bg-slate-950/60 p-4 text-sm leading-6 text-slate-100 outline-none focus:border-violet-400"
+                          aria-label="ข้อความสรุปผลการวิเคราะห์"
+                        />
+                        <div className="analysis-summary-print whitespace-pre-wrap text-sm leading-6 text-slate-900">
+                          {analysisSummary}
+                        </div>
+                        <div className="flex flex-wrap justify-between gap-2 text-[10px] text-slate-400">
+                          <span>จัดทำล่าสุด: {summaryGeneratedAt || '-'}</span>
+                          <span>ข้อความนี้จะถูกใช้ในรายงานพิมพ์และเนื้อหาอีเมล</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-600 bg-slate-950/30 px-4 py-8 text-center text-xs text-slate-400">
+                        ยังไม่ได้จัดทำสรุปผลการวิเคราะห์
+                      </div>
+                    )}
+                  </section>
 
                   <footer className="print-source-footer" aria-label="แหล่งที่มาของรายงาน">
                     แหล่งที่มา: Windows, Mac/PC, OPPO (และยี่ห้ออื่น)/Android, iPad, iPhone/iOS
