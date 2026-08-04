@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
+  CalendarDays,
   CheckCircle2,
   Clock,
   Database,
@@ -383,12 +384,91 @@ const normalizeProcessEvent = (row) => {
   return null;
 };
 
+
+const parseReportDate = (value) => {
+  const raw = String(value || '').trim();
+  const match = raw.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  if (!match) return null;
+  let year = Number(match[3]);
+  if (year < 100) year += 2000;
+  if (year > 2400) year -= 543;
+  const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatDateKey = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const formatShortThaiDate = (date) => new Intl.DateTimeFormat('th-TH', {
+  day: 'numeric', month: 'short'
+}).format(date);
+
+const summarizeHistoryRecord = (record) => {
+  const rows = Array.isArray(record?.rows) ? record.rows : [];
+  const avg = (field) => {
+    const values = rows.map((row) => parseNumericValue(row?.[field])).filter((value) => value !== null);
+    return values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)) : null;
+  };
+  const numericCount = rows.reduce((count, row) => count + [
+    'hotAirIn', 'hotAirOut', 'wetCakeMoisture', 'productMoisture'
+  ].filter((field) => parseNumericValue(row?.[field]) !== null).length, 0);
+  return {
+    hasProduction: numericCount > 0,
+    hotAirIn: avg('hotAirIn'),
+    hotAirOut: avg('hotAirOut'),
+    wetCakeMoisture: avg('wetCakeMoisture'),
+    productMoisture: avg('productMoisture'),
+  };
+};
+
+function WeeklyTrendChart({ days, field, label, unit, minY, maxY, target, lineColor }) {
+  const width = 900;
+  const height = 260;
+  const left = 58;
+  const right = 24;
+  const top = 32;
+  const bottom = 48;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+  const xFor = (index) => left + (index / Math.max(days.length - 1, 1)) * chartWidth;
+  const yFor = (value) => top + (1 - ((value - minY) / (maxY - minY))) * chartHeight;
+  const points = days.map((day, index) => ({ ...day, index, value: day.summary?.[field] ?? null }));
+  const segments = [];
+  let current = [];
+  points.forEach((point) => {
+    if (point.value === null || !point.summary?.hasProduction) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else current.push(point);
+  });
+  if (current.length) segments.push(current);
+  const ticks = [minY, (minY + maxY) / 2, maxY];
+  return (
+    <article className="weekly-chart-card">
+      <div className="weekly-chart-header"><div><h3>{label}</h3><p>ค่าเฉลี่ยเฉพาะวันที่มีรายงานการผลิต</p></div><span>{unit}</span></div>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="weekly-chart-svg" role="img" aria-label={label}>
+        <rect x={left} y={yFor(target[1])} width={chartWidth} height={Math.max(1, yFor(target[0]) - yFor(target[1]))} fill="#10b981" opacity="0.12" />
+        {ticks.map((tick) => <g key={tick}><line x1={left} x2={width-right} y1={yFor(tick)} y2={yFor(tick)} stroke="#334155" strokeDasharray="4 5"/><text x={left-10} y={yFor(tick)+4} textAnchor="end" fill="#94a3b8" fontSize="11">{tick}</text></g>)}
+        {days.map((day, index) => !day.record ? <rect key={`empty-${day.key}`} x={xFor(index)-32} y={top} width="64" height={chartHeight} fill="#64748b" opacity="0.08" rx="6" /> : null)}
+        {segments.map((segment, idx) => <polyline key={idx} points={segment.map((point) => `${xFor(point.index)},${yFor(point.value)}`).join(' ')} fill="none" stroke={lineColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />)}
+        {points.map((point) => point.value !== null && point.summary?.hasProduction ? <g key={point.key}><circle cx={xFor(point.index)} cy={yFor(point.value)} r="5" fill="#0f172a" stroke={lineColor} strokeWidth="3"/><title>{`${point.label}: ${point.value}${unit}`}</title></g> : null)}
+        {days.map((day, index) => <g key={day.key}><text x={xFor(index)} y={height-22} textAnchor="middle" fill="#cbd5e1" fontSize="11">{day.label}</text>{!day.record && <text x={xFor(index)} y={height-8} textAnchor="middle" fill="#64748b" fontSize="9">ไม่มีรายงาน</text>}</g>)}
+      </svg>
+    </article>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState(generateEmptyData());
   const [docInfo, setDocInfo] = useState({ date: new Date().toLocaleDateString('th-TH'), code: 'FM-PD-010 Rev.1' });
   const [appState, setAppState] = useState('ready');
   const [activeTab, setActiveTab] = useState('table');
   const [selectedShift, setSelectedShift] = useState('ALL');
+  const [analyticsView, setAnalyticsView] = useState('DAILY');
   const [showChartEvents, setShowChartEvents] = useState(true);
   const [showChartGradient, setShowChartGradient] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
@@ -614,6 +694,23 @@ export default function App() {
   };
 
   const currentFilteredData = getFilteredDataForShift();
+  const weeklyDays = (() => {
+    const anchor = parseReportDate(docInfo.date) || new Date();
+    const historyByDate = new Map();
+    history.forEach((record) => {
+      const parsed = parseReportDate(record.date);
+      if (parsed) historyByDate.set(formatDateKey(parsed), record);
+    });
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(anchor);
+      date.setDate(anchor.getDate() - (6 - index));
+      const key = formatDateKey(date);
+      const record = historyByDate.get(key) || null;
+      return { key, date, label: formatShortThaiDate(date), record, summary: record ? summarizeHistoryRecord(record) : null };
+    });
+  })();
+  const weeklyProductionDays = weeklyDays.filter((day) => day.summary?.hasProduction).length;
+  const weeklyMissingDays = weeklyDays.filter((day) => !day.record).length;
   const resolvedAllProductTypes = resolveProductTypesList(data);
   const resolvedFilteredProductTypes = resolveProductTypesList(currentFilteredData);
 
@@ -1165,8 +1262,18 @@ export default function App() {
                 <div className="analytics-shell print-report p-3 md:p-5 overflow-auto flex-1 space-y-5 w-full">
                   
                   <div className="glass-panel print-control-bar flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl w-full">
-                    <div className="flex items-center space-x-2">
-                      <Clock className="w-5 h-5 text-blue-600" />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="w-5 h-5 text-cyan-400" />
+                        <span className="text-sm font-bold text-slate-100">มุมมองข้อมูล:</span>
+                        <div className="inline-flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+                          <button onClick={() => setAnalyticsView('DAILY')} className={`px-3 py-1 rounded-md text-xs font-bold ${analyticsView === 'DAILY' ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800'}`}>รายวัน</button>
+                          <button onClick={() => setAnalyticsView('WEEKLY')} className={`px-3 py-1 rounded-md text-xs font-bold ${analyticsView === 'WEEKLY' ? 'bg-cyan-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800'}`}>7 วัน</button>
+                          <button disabled title="จะพัฒนาหลังจากมุมมอง 7 วันผ่านการทดสอบ" className="px-3 py-1 rounded-md text-xs font-bold text-slate-600 cursor-not-allowed">1 เดือน</button>
+                        </div>
+                      </div>
+                      {analyticsView === 'DAILY' && <div className="flex items-center space-x-2">
+                      <Clock className="w-5 h-5 text-blue-400" />
                       <span className="text-sm font-bold text-slate-100">เลือกช่วงเวลา/กะ:</span>
                       <div className="inline-flex flex-wrap rounded-xl border border-slate-700 bg-slate-950/70 p-1">
                         <button 
@@ -1188,16 +1295,17 @@ export default function App() {
                           <Moon className="w-3.5 h-3.5 mr-1" /> กะกลางคืน (20:00 - 08:00)
                         </button>
                       </div>
+                    </div>}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    {analyticsView === 'DAILY' && <div className="flex flex-wrap items-center gap-2">
                       <button type="button" onClick={() => setShowChartEvents((value) => !value)} className={`dashboard-toggle ${showChartEvents ? 'is-active' : ''}`}>
                         <span className="toggle-dot" /> {showChartEvents ? 'แสดงจุดหยุด/เริ่มเครื่อง' : 'ซ่อนจุดหยุด/เริ่มเครื่อง'}
                       </button>
                       <button type="button" onClick={() => setShowChartGradient((value) => !value)} className={`dashboard-toggle ${showChartGradient ? 'is-active' : ''}`}>
                         <span className="toggle-dot" /> เงาสีใต้กราฟ
                       </button>
-                    </div>
+                    </div>}
 
                     <div className="flex items-center space-x-4 text-xs font-medium text-slate-300">
                       <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1.5"></span> ปกติ (Green)</span>
@@ -1206,6 +1314,23 @@ export default function App() {
                     </div>
                   </div>
 
+                  {analyticsView === 'WEEKLY' ? (
+                    <section className="weekly-dashboard space-y-4">
+                      <div className="weekly-summary-grid">
+                        <div><span>ช่วงวันที่</span><strong>{weeklyDays[0]?.label} – {weeklyDays[6]?.label}</strong></div>
+                        <div><span>วันที่มีการผลิต</span><strong>{weeklyProductionDays} วัน</strong></div>
+                        <div><span>ไม่มีรายงาน</span><strong>{weeklyMissingDays} วัน</strong></div>
+                        <div><span>รายงานในคลัง</span><strong>{history.length} ฉบับ</strong></div>
+                      </div>
+                      <div className="weekly-notice">วันที่ไม่มีรายงานจะแสดงเป็นช่องว่างสีเทา และระบบจะไม่ลากเส้นกราฟข้ามวันดังกล่าว เพื่อไม่ให้เข้าใจผิดว่าโรงงานเดินเครื่องต่อเนื่อง</div>
+                      <div className="weekly-chart-grid">
+                        <WeeklyTrendChart days={weeklyDays} field="hotAirIn" label="อุณหภูมิลมเข้า IN เฉลี่ยรายวัน" unit="°C" minY={100} maxY={180} target={[140,160]} lineColor="#fb923c" />
+                        <WeeklyTrendChart days={weeklyDays} field="hotAirOut" label="อุณหภูมิปลายปล่อง OUT เฉลี่ยรายวัน" unit="°C" minY={35} maxY={85} target={[50,65]} lineColor="#fbbf24" />
+                        <WeeklyTrendChart days={weeklyDays} field="wetCakeMoisture" label="ความชื้นแป้งหมาด WET เฉลี่ยรายวัน" unit="%" minY={20} maxY={45} target={[30,38]} lineColor="#818cf8" />
+                        <WeeklyTrendChart days={weeklyDays} field="productMoisture" label="ความชื้นแป้งแห้ง PROD เฉลี่ยรายวัน" unit="%" minY={8} maxY={18} target={[11,12.5]} lineColor="#60a5fa" />
+                      </div>
+                    </section>
+                  ) : <>
                   <div className="print-kpi-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
                     <div className="kpi-card kpi-orange">
                       <p className="text-[11px] font-bold text-slate-400 uppercase">อุณหภูมิลมเข้า IN (เฉลี่ย)</p>
@@ -1373,6 +1498,7 @@ export default function App() {
                       </div>
                     )}
                   </section>
+                  </>}
 
                   <footer className="print-source-footer" aria-label="ข้อมูลการพิมพ์รายงาน">
                     วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
