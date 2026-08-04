@@ -338,6 +338,8 @@ Pay special attention to 1/7, 3/5, 5/8, 8/9 and decimal points.
 
 6. REMARK
 Copy only handwriting visibly located in the REMARK cell of that row.
+Preserve the original event wording exactly. "Power Stop", "Power Off" or "ไฟดับ" must remain power-related wording and must NEVER be rewritten as "Stop Dryer" or "หยุดอบแป้ง".
+Likewise, preserve "Stop Dryer", "Start Dryer", "Power Stop" and other distinct events as separate meanings.
 If no remark ink exists, output "-".
 Do not duplicate the same remark into another row.
 

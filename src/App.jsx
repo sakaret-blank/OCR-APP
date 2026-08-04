@@ -373,7 +373,7 @@ const normalizeProcessEvent = (row) => {
   const productText = productRaw.toLowerCase();
   const eventTime = extractEventTime(remarkRaw, wetRaw, productRaw) || String(row.time || '').replace('.', ':');
 
-  const isPowerOutage = remark.includes('ไฟดับ') || remark.includes('power outage') || remark.includes('power fail');
+  const isPowerOutage = remark.includes('ไฟดับ') || remark.includes('power outage') || remark.includes('power fail') || remark.includes('power stop') || remark.includes('power off');
   const isStopDryer = /(^|\s)(stop dryer|stop)(\s|$)/i.test(remark) || remark.includes('หยุดอบแป้ง');
   const isStartDryer = /(^|\s)(start dryer|start|power start)(\s|$)/i.test(remark) || remark === 'อบแป้ง' || remark.includes('เริ่มอบแป้ง');
   const isClothAction = ['แซะผ้า', 'เปลี่ยนผ้า', 'แซะสลัด', 'แซะผ้าสลัด'].some((word) => wetText.includes(word));
@@ -392,11 +392,25 @@ const parseReportDate = (value) => {
   const raw = String(value || '').trim();
   const match = raw.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
   if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
   let year = Number(match[3]);
-  if (year < 100) year += 2000;
+  if (year < 100) year = year >= 60 ? year + 1957 : year + 2000;
   if (year > 2400) year -= 543;
-  const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
-  return Number.isNaN(date.getTime()) ? null : date;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+};
+
+const formatReportDateDisplay = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear() + 543}`;
+};
+
+const normalizeReportDateDisplay = (value) => {
+  const parsed = parseReportDate(value);
+  return parsed ? formatReportDateDisplay(parsed) : String(value || '').trim();
 };
 
 const formatDateKey = (date) => {
@@ -499,7 +513,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('table');
   const [selectedShift, setSelectedShift] = useState('ALL');
   const [analyticsView, setAnalyticsView] = useState('DAILY');
-  const [weeklyEndDateKey, setWeeklyEndDateKey] = useState('');
+  const [rangeStartDateKey, setRangeStartDateKey] = useState('');
+  const [rangeEndDateKey, setRangeEndDateKey] = useState('');
+  const [historyDisplayMode, setHistoryDisplayMode] = useState('ALL_DAYS');
+  const [reportDateRaw, setReportDateRaw] = useState('');
+  const [dateEditedByUser, setDateEditedByUser] = useState(false);
+  const [currentHistoryId, setCurrentHistoryId] = useState(null);
   const [historySortMode, setHistorySortMode] = useState('DATE_DESC');
   const [showChartEvents, setShowChartEvents] = useState(true);
   const [showChartGradient, setShowChartGradient] = useState(true);
@@ -531,14 +550,17 @@ export default function App() {
 
 
   useEffect(() => {
-    if (analyticsView !== 'WEEKLY' || weeklyEndDateKey) return;
+    if (analyticsView !== 'WEEKLY' || (rangeStartDateKey && rangeEndDateKey)) return;
     const datedRecords = history
       .map((record) => parseReportDate(record?.date || record?.reportDate))
       .filter(Boolean)
       .sort((a, b) => b - a);
-    const initialDate = datedRecords[0] || parseReportDate(docInfo.date) || new Date();
-    setWeeklyEndDateKey(formatDateKey(initialDate));
-  }, [analyticsView, weeklyEndDateKey, history, docInfo.date]);
+    const endDate = datedRecords[0] || parseReportDate(docInfo.date) || new Date();
+    const startDate = new Date(endDate);
+    startDate.setDate(endDate.getDate() - 6);
+    setRangeStartDateKey(formatDateKey(startDate));
+    setRangeEndDateKey(formatDateKey(endDate));
+  }, [analyticsView, rangeStartDateKey, rangeEndDateKey, history, docInfo.date]);
 
   const saveHistoryToStorage = (newHistory) => {
     const orderedHistory = sortHistoryRecords(newHistory, 'DATE_DESC');
@@ -587,7 +609,10 @@ export default function App() {
       setShowImagePane(true);
       setAppState('uploaded');
       setData(generateEmptyData());
-      setDocInfo({ date: new Date().toLocaleDateString('th-TH'), code: 'FM-PD-010 Rev.1' });
+      setDocInfo({ date: normalizeReportDateDisplay(new Date().toLocaleDateString('th-TH')), code: 'FM-PD-010 Rev.1' });
+      setReportDateRaw('');
+      setDateEditedByUser(false);
+      setCurrentHistoryId(null);
       setAnalysisSummary('');
       setSummaryGeneratedAt('');
       setSummaryNeedsRefresh(false);
@@ -621,8 +646,11 @@ export default function App() {
 
       let formattedRows = [];
       if (result.rows && Array.isArray(result.rows)) {
-        const newDate = result.reportDate || docInfo.date;
+        const rawDate = result.reportDate || docInfo.date;
+        const newDate = normalizeReportDateDisplay(rawDate);
         const newCode = result.documentCode || docInfo.code;
+        setReportDateRaw(String(rawDate || '').trim());
+        setDateEditedByUser(false);
         setDocInfo({ date: newDate, code: newCode });
         
         formattedRows = flagIsolatedNumericOutliers(alignOcrRowsToCanonicalTimes(result.rows));
@@ -631,7 +659,8 @@ export default function App() {
         setAnalysisSummary('');
         setSummaryGeneratedAt('');
         setSummaryNeedsRefresh(false);
-        autoSaveToHistory(newDate, newCode, formattedRows);
+        const savedId = autoSaveToHistory(newDate, newCode, formattedRows, { reportDateRaw: String(rawDate || '').trim(), dateEditedByUser: false });
+        setCurrentHistoryId(savedId);
         setShowImagePane(false);
       } else {
         throw new Error("ข้อมูลตอบกลับจาก AI ไม่พบรายการแถว (rows)");
@@ -649,28 +678,33 @@ export default function App() {
     }
   };
 
-  const autoSaveToHistory = (dateStr, codeStr, rowsData) => {
-    const reportId = `${dateStr}_${Date.now()}`;
+  const autoSaveToHistory = (dateStr, codeStr, rowsData, metadata = {}) => {
+    const parsedDate = parseReportDate(dateStr);
+    if (!parsedDate) return null;
+    const normalizedDate = formatReportDateDisplay(parsedDate);
+    const dateKey = formatDateKey(parsedDate);
+    const reportId = metadata.id || currentHistoryId || `${dateKey}_${Date.now()}`;
     const newRecord = {
       id: reportId,
-      date: dateStr,
+      date: normalizedDate,
+      reportDateRaw: metadata.reportDateRaw ?? reportDateRaw ?? dateStr,
+      dateEditedByUser: metadata.dateEditedByUser ?? dateEditedByUser,
+      reportDateISO: dateKey,
       code: codeStr,
       timestamp: new Date().toISOString(),
       rows: rowsData
     };
 
-    const newDateKey = getRecordDateKey(newRecord);
-    const existingIndex = history.findIndex((item) => newDateKey && getRecordDateKey(item) === newDateKey);
-    let updatedHistory = [...history];
-    if (existingIndex >= 0) {
-      updatedHistory[existingIndex] = newRecord;
-    } else {
-      updatedHistory.push(newRecord);
-    }
+    let updatedHistory = history.filter((item) => item.id !== reportId);
+    const duplicateIndex = updatedHistory.findIndex((item) => getRecordDateKey(item) === dateKey);
+    if (duplicateIndex >= 0) updatedHistory[duplicateIndex] = newRecord;
+    else updatedHistory.push(newRecord);
 
     saveHistoryToStorage(updatedHistory);
-    if (newDateKey) setWeeklyEndDateKey((current) => current || newDateKey);
+    setRangeEndDateKey((current) => current || dateKey);
+    return reportId;
   };
+
 
   const handleManualSave = () => {
     const parsedDate = parseReportDate(docInfo.date);
@@ -679,14 +713,22 @@ export default function App() {
       return;
     }
     const dateKey = formatDateKey(parsedDate);
-    const duplicate = history.find((item) => getRecordDateKey(item) === dateKey);
-    autoSaveToHistory(docInfo.date, docInfo.code, data);
+    const duplicate = history.find((item) => item.id !== currentHistoryId && getRecordDateKey(item) === dateKey);
+    const savedId = autoSaveToHistory(docInfo.date, docInfo.code, data, {
+      id: currentHistoryId,
+      reportDateRaw: reportDateRaw || docInfo.date,
+      dateEditedByUser,
+    });
+    setCurrentHistoryId(savedId);
     setSaveStatus(duplicate ? 'แทนที่รายงานเดิมของวันที่นี้เรียบร้อยแล้ว' : 'บันทึกประวัติลงเครื่องเรียบร้อยแล้ว');
     setTimeout(() => setSaveStatus(''), 3000);
   };
 
   const loadReportFromHistory = (record) => {
-    setDocInfo({ date: record.date, code: record.code });
+    setDocInfo({ date: normalizeReportDateDisplay(record.date), code: record.code });
+    setReportDateRaw(record.reportDateRaw || record.date || '');
+    setDateEditedByUser(Boolean(record.dateEditedByUser));
+    setCurrentHistoryId(record.id);
     setData(record.rows);
     setAnalysisSummary('');
     setSummaryGeneratedAt('');
@@ -750,31 +792,48 @@ export default function App() {
   };
 
   const currentFilteredData = getFilteredDataForShift();
-  const historyRecordsWithDates = history
-    .map((record) => ({ record, date: parseReportDate(record?.date || record?.reportDate), key: getRecordDateKey(record) }))
-    .filter((item) => item.date && item.key);
-  const latestHistoryDate = historyRecordsWithDates.reduce((latest, item) => (!latest || item.date > latest ? item.date : latest), null);
-  const weeklyAnchor = parseDateKey(weeklyEndDateKey) || latestHistoryDate || parseReportDate(docInfo.date) || new Date();
-  const latestRecordByDate = new Map();
-  historyRecordsWithDates.forEach(({ record, key }) => {
-    const existing = latestRecordByDate.get(key);
-    if (!existing || getRecordTimestamp(record) >= getRecordTimestamp(existing)) latestRecordByDate.set(key, record);
+  const historyByDate = new Map();
+  history.forEach((record) => {
+    const key = getRecordDateKey(record);
+    if (!key) return;
+    const current = historyByDate.get(key);
+    if (!current || getRecordTimestamp(record) >= getRecordTimestamp(current)) historyByDate.set(key, record);
   });
-  const weeklyDays = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(weeklyAnchor);
-    date.setDate(weeklyAnchor.getDate() - (6 - index));
+
+  const latestHistoryDate = [...historyByDate.keys()].map(parseDateKey).filter(Boolean).sort((a,b) => b-a)[0] || null;
+  const defaultEnd = latestHistoryDate || parseReportDate(docInfo.date) || new Date();
+  const defaultStart = new Date(defaultEnd);
+  defaultStart.setDate(defaultEnd.getDate() - 6);
+  const requestedStart = parseDateKey(rangeStartDateKey) || defaultStart;
+  const requestedEnd = parseDateKey(rangeEndDateKey) || defaultEnd;
+  const normalizedStart = requestedStart <= requestedEnd ? requestedStart : requestedEnd;
+  const normalizedEnd = requestedStart <= requestedEnd ? requestedEnd : requestedStart;
+  const dayCount = Math.min(93, Math.round((normalizedEnd - normalizedStart) / 86400000) + 1);
+
+  const allRangeDays = Array.from({ length: dayCount }, (_, index) => {
+    const date = new Date(normalizedStart);
+    date.setDate(normalizedStart.getDate() + index);
     const key = formatDateKey(date);
-    const record = latestRecordByDate.get(key) || null;
-    return { key, date, label: formatShortThaiDate(date), record, summary: record ? summarizeHistoryRecord(record) : null };
+    const record = historyByDate.get(key) || null;
+    const summary = record ? summarizeHistoryRecord(record) : null;
+    return { key, date, label: formatShortThaiDate(date), record, summary };
   });
-  const weeklyProductionDays = weeklyDays.filter((day) => day.summary?.hasProduction).length;
-  const weeklyMissingDays = weeklyDays.filter((day) => !day.record).length;
-  const weeklyReportCount = weeklyDays.filter((day) => day.record).length;
+
+  const weeklyDays = historyDisplayMode === 'PRODUCTION_ONLY'
+    ? allRangeDays.filter((day) => day.summary?.hasProduction)
+    : allRangeDays;
+  const weeklyProductionDays = allRangeDays.filter((day) => day.summary?.hasProduction).length;
+  const weeklyNoProductionDays = allRangeDays.filter((day) => day.record && !day.summary?.hasProduction).length;
+  const weeklyMissingDays = allRangeDays.filter((day) => !day.record).length;
+  const weeklyReportCount = allRangeDays.filter((day) => day.record).length;
   const sortedHistory = sortHistoryRecords(history, historySortMode);
   const moveWeeklyRange = (days) => {
-    const next = new Date(weeklyAnchor);
-    next.setDate(next.getDate() + days);
-    setWeeklyEndDateKey(formatDateKey(next));
+    const startDate = new Date(normalizedStart);
+    const endDate = new Date(normalizedEnd);
+    startDate.setDate(startDate.getDate() + days);
+    endDate.setDate(endDate.getDate() + days);
+    setRangeStartDateKey(formatDateKey(startDate));
+    setRangeEndDateKey(formatDateKey(endDate));
   };
   const resolvedAllProductTypes = resolveProductTypesList(data);
   const resolvedFilteredProductTypes = resolveProductTypesList(currentFilteredData);
@@ -1116,7 +1175,18 @@ export default function App() {
             />
             <div>
               <h1 className="text-base md:text-lg font-bold text-slate-800 leading-tight">ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1>
-              <p className="text-xs text-slate-500">{docInfo.code} | วันที่เอกสาร: <strong className="text-blue-700">{docInfo.date}</strong></p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>{docInfo.code} | วันที่เอกสาร:</span>
+                <input
+                  aria-label="วันที่เอกสาร"
+                  value={docInfo.date}
+                  onChange={(event) => { setDocInfo((current) => ({ ...current, date: event.target.value })); setDateEditedByUser(true); setSaveStatus('แก้ไขวันที่แล้ว กรุณาบันทึกประวัติ'); }}
+                  onBlur={() => { const normalized = normalizeReportDateDisplay(docInfo.date); if (normalized) setDocInfo((current) => ({ ...current, date: normalized })); }}
+                  className="report-date-input"
+                  placeholder="DD/MM/YYYY"
+                />
+                {reportDateRaw && <span className="report-date-raw">อ่านจากต้นฉบับ: {reportDateRaw}{dateEditedByUser ? ' • แก้ไขแล้ว' : ''}</span>}
+              </div>
             </div>
           </div>
           
@@ -1381,27 +1451,28 @@ export default function App() {
 
                   {analyticsView === 'WEEKLY' ? (
                     <section className="weekly-dashboard space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => moveWeeklyRange(-7)} className="inline-flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 hover:bg-slate-700" title="ดู 7 วันก่อนหน้า">
-                            <ChevronLeft className="h-4 w-4" /> 7 วันก่อน
-                          </button>
-                          <button type="button" onClick={() => moveWeeklyRange(7)} className="inline-flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 hover:bg-slate-700" title="ดู 7 วันถัดไป">
-                            7 วันถัดไป <ChevronRight className="h-4 w-4" />
-                          </button>
+                      <div className="weekly-range-panel">
+                        <div className="weekly-range-controls">
+                          <button type="button" onClick={() => moveWeeklyRange(-7)} className="weekly-range-button"><ChevronLeft className="h-4 w-4" /> เลื่อนย้อนหลัง</button>
+                          <label className="weekly-date-field"><span>วันที่เริ่มต้น</span><input type="date" value={formatDateKey(normalizedStart)} onChange={(event) => setRangeStartDateKey(event.target.value)} /></label>
+                          <span className="weekly-date-separator">ถึง</span>
+                          <label className="weekly-date-field"><span>วันที่สิ้นสุด</span><input type="date" value={formatDateKey(normalizedEnd)} onChange={(event) => setRangeEndDateKey(event.target.value)} /></label>
+                          <button type="button" onClick={() => moveWeeklyRange(7)} className="weekly-range-button">เลื่อนไปข้างหน้า <ChevronRight className="h-4 w-4" /></button>
                         </div>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-                          วันที่สิ้นสุดช่วง
-                          <input type="date" value={formatDateKey(weeklyAnchor)} onChange={(event) => setWeeklyEndDateKey(event.target.value)} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white [color-scheme:dark]" />
-                        </label>
+                        <div className="weekly-display-toggle">
+                          <span>การแสดงผล:</span>
+                          <button type="button" className={historyDisplayMode === 'ALL_DAYS' ? 'active' : ''} onClick={() => setHistoryDisplayMode('ALL_DAYS')}>วันที่ทั้งหมด</button>
+                          <button type="button" className={historyDisplayMode === 'PRODUCTION_ONLY' ? 'active' : ''} onClick={() => setHistoryDisplayMode('PRODUCTION_ONLY')}>เฉพาะวันที่มีข้อมูลการผลิต</button>
+                        </div>
                       </div>
                       <div className="weekly-summary-grid">
-                        <div><span>ช่วงวันที่</span><strong>{weeklyDays[0]?.label} – {weeklyDays[6]?.label}</strong></div>
+                        <div><span>ช่วงวันที่</span><strong>{formatShortThaiDate(normalizedStart)} – {formatShortThaiDate(normalizedEnd)}</strong><small>{dayCount} วัน (รวมวันแรกและวันสุดท้าย)</small></div>
                         <div><span>วันที่มีการผลิต</span><strong>{weeklyProductionDays} วัน</strong></div>
+                        <div><span>ไม่มีการผลิต</span><strong>{weeklyNoProductionDays} วัน</strong><small>มีรายงานแต่ไม่มีค่าการผลิต</small></div>
                         <div><span>ไม่มีรายงาน</span><strong>{weeklyMissingDays} วัน</strong></div>
                         <div><span>รายงานในช่วงนี้</span><strong>{weeklyReportCount} ฉบับ</strong><small>ทั้งหมดในคลัง {history.length} ฉบับ</small></div>
                       </div>
-                      <div className="weekly-notice">วันที่ไม่มีรายงานจะแสดงเป็นช่องว่างสีเทา และระบบจะไม่ลากเส้นกราฟข้ามวันดังกล่าว เพื่อไม่ให้เข้าใจผิดว่าโรงงานเดินเครื่องต่อเนื่อง</div>
+                      <div className="weekly-notice">ระบบแยก “มีการผลิต”, “ไม่มีการผลิต” และ “ไม่มีรายงาน” ออกจากกัน โดยไม่ใช้ค่า 0 แทนวันที่ว่าง</div>
                       <div className="weekly-chart-grid">
                         <WeeklyTrendChart days={weeklyDays} field="hotAirIn" label="อุณหภูมิลมเข้า IN เฉลี่ยรายวัน" unit="°C" minY={100} maxY={180} target={[140,160]} lineColor="#fb923c" />
                         <WeeklyTrendChart days={weeklyDays} field="hotAirOut" label="อุณหภูมิปลายปล่อง OUT เฉลี่ยรายวัน" unit="°C" minY={35} maxY={85} target={[50,65]} lineColor="#fbbf24" />
@@ -1654,8 +1725,9 @@ export default function App() {
                   sortedHistory.map((record) => (
                     <div key={record.id} className="p-3 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-lg flex items-center justify-between">
                       <div>
-                        <p className="font-bold text-slate-800 text-xs">📅 วันที่: {record.date}</p>
-                        <p className="text-[11px] text-slate-500">รหัสเอกสาร: {record.code} | เวลา: {new Date(record.timestamp).toLocaleString('th-TH')}</p>
+                        <p className="font-bold text-slate-800 text-xs">📅 วันที่เอกสาร: {record.date}</p>
+                        {record.reportDateRaw && record.reportDateRaw !== record.date && <p className="text-[10px] text-slate-500">อ่านจากต้นฉบับ: {record.reportDateRaw}{record.dateEditedByUser ? ' • แก้ไขแล้ว' : ''}</p>}
+                        <p className="text-[11px] text-slate-500">รหัสเอกสาร: {record.code} | บันทึก: {new Date(record.timestamp).toLocaleString('th-TH')}</p>
                       </div>
                       <div className="flex items-center space-x-2">
                         <button 
