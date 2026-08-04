@@ -3,6 +3,9 @@ import {
   AlertTriangle,
   BarChart3,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
   CheckCircle2,
   Clock,
   Database,
@@ -403,6 +406,33 @@ const formatDateKey = (date) => {
   return `${y}-${m}-${d}`;
 };
 
+const parseDateKey = (value) => {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (Number.isNaN(date.getTime())) return null;
+  if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) return null;
+  return date;
+};
+
+const getRecordDateKey = (record) => {
+  const parsed = parseReportDate(record?.date || record?.reportDate);
+  return parsed ? formatDateKey(parsed) : '';
+};
+
+const getRecordTimestamp = (record) => {
+  const parsed = new Date(record?.timestamp || record?.updatedAt || record?.createdAt || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sortHistoryRecords = (records, mode = 'DATE_DESC') => [...records].sort((left, right) => {
+  const leftDate = parseReportDate(left?.date || left?.reportDate)?.getTime() || 0;
+  const rightDate = parseReportDate(right?.date || right?.reportDate)?.getTime() || 0;
+  if (mode === 'DATE_ASC') return leftDate - rightDate || getRecordTimestamp(left) - getRecordTimestamp(right);
+  if (mode === 'SAVED_DESC') return getRecordTimestamp(right) - getRecordTimestamp(left);
+  return rightDate - leftDate || getRecordTimestamp(right) - getRecordTimestamp(left);
+});
+
 const formatShortThaiDate = (date) => new Intl.DateTimeFormat('th-TH', {
   day: 'numeric', month: 'short'
 }).format(date);
@@ -469,6 +499,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('table');
   const [selectedShift, setSelectedShift] = useState('ALL');
   const [analyticsView, setAnalyticsView] = useState('DAILY');
+  const [weeklyEndDateKey, setWeeklyEndDateKey] = useState('');
+  const [historySortMode, setHistorySortMode] = useState('DATE_DESC');
   const [showChartEvents, setShowChartEvents] = useState(true);
   const [showChartGradient, setShowChartGradient] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
@@ -490,17 +522,29 @@ export default function App() {
     try {
       const savedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
+        setHistory(sortHistoryRecords(JSON.parse(savedHistory), 'DATE_DESC'));
       }
     } catch (e) {
       console.error('ไม่สามารถดึงประวัติได้:', e);
     }
   }, []);
 
+
+  useEffect(() => {
+    if (analyticsView !== 'WEEKLY' || weeklyEndDateKey) return;
+    const datedRecords = history
+      .map((record) => parseReportDate(record?.date || record?.reportDate))
+      .filter(Boolean)
+      .sort((a, b) => b - a);
+    const initialDate = datedRecords[0] || parseReportDate(docInfo.date) || new Date();
+    setWeeklyEndDateKey(formatDateKey(initialDate));
+  }, [analyticsView, weeklyEndDateKey, history, docInfo.date]);
+
   const saveHistoryToStorage = (newHistory) => {
-    setHistory(newHistory);
+    const orderedHistory = sortHistoryRecords(newHistory, 'DATE_DESC');
+    setHistory(orderedHistory);
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(orderedHistory));
     } catch (e) {
       console.error('บันทึกลงความจำเครื่องไม่สำเร็จ:', e);
     }
@@ -615,20 +659,29 @@ export default function App() {
       rows: rowsData
     };
 
-    const existingIndex = history.findIndex(h => h.date === dateStr);
+    const newDateKey = getRecordDateKey(newRecord);
+    const existingIndex = history.findIndex((item) => newDateKey && getRecordDateKey(item) === newDateKey);
     let updatedHistory = [...history];
     if (existingIndex >= 0) {
       updatedHistory[existingIndex] = newRecord;
     } else {
-      updatedHistory.unshift(newRecord);
+      updatedHistory.push(newRecord);
     }
 
     saveHistoryToStorage(updatedHistory);
+    if (newDateKey) setWeeklyEndDateKey((current) => current || newDateKey);
   };
 
   const handleManualSave = () => {
+    const parsedDate = parseReportDate(docInfo.date);
+    if (!parsedDate) {
+      setStatusMessage('⚠️ วันที่เอกสารไม่ถูกต้อง กรุณาตรวจสอบก่อนบันทึกประวัติ');
+      return;
+    }
+    const dateKey = formatDateKey(parsedDate);
+    const duplicate = history.find((item) => getRecordDateKey(item) === dateKey);
     autoSaveToHistory(docInfo.date, docInfo.code, data);
-    setSaveStatus('บันทึกประวัติลงเครื่องเรียบร้อยแล้ว');
+    setSaveStatus(duplicate ? 'แทนที่รายงานเดิมของวันที่นี้เรียบร้อยแล้ว' : 'บันทึกประวัติลงเครื่องเรียบร้อยแล้ว');
     setTimeout(() => setSaveStatus(''), 3000);
   };
 
@@ -670,9 +723,12 @@ export default function App() {
         const importedData = JSON.parse(event.target.result);
         if (Array.isArray(importedData)) {
           const mergedMap = new Map();
-          history.forEach(item => mergedMap.set(item.date, item));
-          importedData.forEach(item => mergedMap.set(item.date, item));
-          const mergedList = Array.from(mergedMap.values());
+          [...history, ...importedData].forEach((item, index) => {
+            const key = getRecordDateKey(item) || `invalid-${index}-${item?.id || ''}`;
+            const existing = mergedMap.get(key);
+            if (!existing || getRecordTimestamp(item) >= getRecordTimestamp(existing)) mergedMap.set(key, item);
+          });
+          const mergedList = sortHistoryRecords(Array.from(mergedMap.values()), 'DATE_DESC');
           saveHistoryToStorage(mergedList);
           setStatusMessage(`นำเข้าประวัติสำเร็จ! รวมทั้งสิ้น ${mergedList.length} รายการ`);
           setTimeout(() => setStatusMessage(''), 4000);
@@ -694,23 +750,32 @@ export default function App() {
   };
 
   const currentFilteredData = getFilteredDataForShift();
-  const weeklyDays = (() => {
-    const anchor = parseReportDate(docInfo.date) || new Date();
-    const historyByDate = new Map();
-    history.forEach((record) => {
-      const parsed = parseReportDate(record.date);
-      if (parsed) historyByDate.set(formatDateKey(parsed), record);
-    });
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(anchor);
-      date.setDate(anchor.getDate() - (6 - index));
-      const key = formatDateKey(date);
-      const record = historyByDate.get(key) || null;
-      return { key, date, label: formatShortThaiDate(date), record, summary: record ? summarizeHistoryRecord(record) : null };
-    });
-  })();
+  const historyRecordsWithDates = history
+    .map((record) => ({ record, date: parseReportDate(record?.date || record?.reportDate), key: getRecordDateKey(record) }))
+    .filter((item) => item.date && item.key);
+  const latestHistoryDate = historyRecordsWithDates.reduce((latest, item) => (!latest || item.date > latest ? item.date : latest), null);
+  const weeklyAnchor = parseDateKey(weeklyEndDateKey) || latestHistoryDate || parseReportDate(docInfo.date) || new Date();
+  const latestRecordByDate = new Map();
+  historyRecordsWithDates.forEach(({ record, key }) => {
+    const existing = latestRecordByDate.get(key);
+    if (!existing || getRecordTimestamp(record) >= getRecordTimestamp(existing)) latestRecordByDate.set(key, record);
+  });
+  const weeklyDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(weeklyAnchor);
+    date.setDate(weeklyAnchor.getDate() - (6 - index));
+    const key = formatDateKey(date);
+    const record = latestRecordByDate.get(key) || null;
+    return { key, date, label: formatShortThaiDate(date), record, summary: record ? summarizeHistoryRecord(record) : null };
+  });
   const weeklyProductionDays = weeklyDays.filter((day) => day.summary?.hasProduction).length;
   const weeklyMissingDays = weeklyDays.filter((day) => !day.record).length;
+  const weeklyReportCount = weeklyDays.filter((day) => day.record).length;
+  const sortedHistory = sortHistoryRecords(history, historySortMode);
+  const moveWeeklyRange = (days) => {
+    const next = new Date(weeklyAnchor);
+    next.setDate(next.getDate() + days);
+    setWeeklyEndDateKey(formatDateKey(next));
+  };
   const resolvedAllProductTypes = resolveProductTypesList(data);
   const resolvedFilteredProductTypes = resolveProductTypesList(currentFilteredData);
 
@@ -1316,11 +1381,25 @@ export default function App() {
 
                   {analyticsView === 'WEEKLY' ? (
                     <section className="weekly-dashboard space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => moveWeeklyRange(-7)} className="inline-flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 hover:bg-slate-700" title="ดู 7 วันก่อนหน้า">
+                            <ChevronLeft className="h-4 w-4" /> 7 วันก่อน
+                          </button>
+                          <button type="button" onClick={() => moveWeeklyRange(7)} className="inline-flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 hover:bg-slate-700" title="ดู 7 วันถัดไป">
+                            7 วันถัดไป <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                          วันที่สิ้นสุดช่วง
+                          <input type="date" value={formatDateKey(weeklyAnchor)} onChange={(event) => setWeeklyEndDateKey(event.target.value)} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white [color-scheme:dark]" />
+                        </label>
+                      </div>
                       <div className="weekly-summary-grid">
                         <div><span>ช่วงวันที่</span><strong>{weeklyDays[0]?.label} – {weeklyDays[6]?.label}</strong></div>
                         <div><span>วันที่มีการผลิต</span><strong>{weeklyProductionDays} วัน</strong></div>
                         <div><span>ไม่มีรายงาน</span><strong>{weeklyMissingDays} วัน</strong></div>
-                        <div><span>รายงานในคลัง</span><strong>{history.length} ฉบับ</strong></div>
+                        <div><span>รายงานในช่วงนี้</span><strong>{weeklyReportCount} ฉบับ</strong><small>ทั้งหมดในคลัง {history.length} ฉบับ</small></div>
                       </div>
                       <div className="weekly-notice">วันที่ไม่มีรายงานจะแสดงเป็นช่องว่างสีเทา และระบบจะไม่ลากเส้นกราฟข้ามวันดังกล่าว เพื่อไม่ให้เข้าใจผิดว่าโรงงานเดินเครื่องต่อเนื่อง</div>
                       <div className="weekly-chart-grid">
@@ -1559,10 +1638,20 @@ export default function App() {
               </div>
 
               <div className="p-4 overflow-auto flex-1 space-y-2">
+                {history.length > 0 && (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600"><ArrowUpDown className="h-4 w-4" /> จัดเรียงรายงาน</span>
+                    <select value={historySortMode} onChange={(event) => setHistorySortMode(event.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
+                      <option value="DATE_DESC">วันที่ใหม่ → เก่า</option>
+                      <option value="DATE_ASC">วันที่เก่า → ใหม่</option>
+                      <option value="SAVED_DESC">บันทึกล่าสุด</option>
+                    </select>
+                  </div>
+                )}
                 {history.length === 0 ? (
                   <p className="text-center text-slate-500 py-8 text-xs">ยังไม่มีประวัติในเครื่อง กด "บันทึกประวัติ" หลังสแกนเพื่อเก็บบันทึก</p>
                 ) : (
-                  history.map((record) => (
+                  sortedHistory.map((record) => (
                     <div key={record.id} className="p-3 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-lg flex items-center justify-between">
                       <div>
                         <p className="font-bold text-slate-800 text-xs">📅 วันที่: {record.date}</p>
