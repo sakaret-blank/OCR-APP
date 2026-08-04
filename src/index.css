@@ -151,67 +151,50 @@ button {
   display: none;
 }
 
-/* Print report layout v21: fixed three-page A4 landscape report */
+/* Print report layout v22: A4 portrait, fixed header/footer, four pages */
 .print-source-footer,
-.print-landscape-report {
-  display: none;
-}
+.print-landscape-report { display: none; }
 
 @media print {
-  @page {
-    size: A4 landscape;
-    margin: 0;
-  }
+  @page { size: A4 portrait; margin: 0; }
 
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box !important;
-  }
+  *, *::before, *::after { box-sizing: border-box !important; }
 
-  html,
-  body,
-  #root {
-    width: 297mm !important;
-    min-width: 297mm !important;
+  html, body, #root {
+    width: 210mm !important;
+    min-width: 210mm !important;
     height: auto !important;
     min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-    background: #ffffff !important;
+    background: #fff !important;
   }
 
-  body {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
+  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
   .print-report-main-header,
   .print-report > :not(.print-landscape-report),
-  .print-source-footer {
-    display: none !important;
-  }
+  .print-source-footer { display: none !important; }
 
   .print-report,
   .print-landscape-report {
     display: block !important;
-    width: 297mm !important;
+    width: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-    background: #ffffff !important;
+    background: #fff !important;
   }
 
   .print-landscape-page {
     position: relative;
-    display: block;
-    width: 297mm !important;
-    height: 209mm !important;
-    min-height: 209mm !important;
-    max-height: 209mm !important;
+    width: 210mm !important;
+    height: 296mm !important;
+    min-height: 296mm !important;
+    max-height: 296mm !important;
     margin: 0 !important;
-    padding: 7mm 8mm 11mm !important;
+    padding: 7mm 7mm 12mm !important;
     overflow: hidden !important;
     background: #070b14 !important;
     color: #e2e8f0 !important;
@@ -220,96 +203,61 @@ button {
     break-after: page !important;
     page-break-after: always !important;
   }
-
-  .print-landscape-page:last-child {
-    break-after: auto !important;
-    page-break-after: auto !important;
-  }
+  .print-landscape-page:last-child { break-after: auto !important; page-break-after: auto !important; }
 
   .print-landscape-header,
   .print-landscape-section-title {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    height: 14mm;
-    min-height: 14mm;
+    gap: 3mm;
+    width: 100%;
+    height: 17mm;
+    min-height: 17mm;
     margin: 0 0 3mm;
-    padding: 2.2mm 3.5mm;
-    border: 0.3mm solid rgba(148, 163, 184, 0.35);
+    padding: 2mm 3mm;
+    border: .3mm solid rgba(148,163,184,.35);
     border-radius: 3mm;
-    background: rgba(15, 23, 42, 0.96);
+    background: rgba(15,23,42,.97);
     overflow: hidden;
   }
-
+  .print-landscape-header img { flex: 0 0 11mm; width: 11mm; height: 11mm; border-radius: 2mm; }
+  .print-landscape-header > div,
+  .print-landscape-section-title > div { min-width: 0; flex: 1 1 auto; }
   .print-landscape-header h1,
   .print-landscape-section-title h1 {
     margin: 0;
     color: #f8fafc;
-    font-size: 14pt;
-    line-height: 1.05;
+    font-size: 12.5pt;
+    line-height: 1.1;
     font-weight: 800;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
-
   .print-landscape-header p,
-  .print-landscape-section-title p {
-    margin: 0.8mm 0 0;
-    color: #94a3b8;
-    font-size: 8pt;
-  }
-
-  .print-landscape-header img {
-    width: 10mm;
-    height: 10mm;
-    border-radius: 2mm;
-  }
+  .print-landscape-section-title p { margin: .7mm 0 0; color: #94a3b8; font-size: 7.5pt; white-space: nowrap; }
 
   .print-landscape-kpis {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 3mm;
-    height: 21mm;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 2.5mm;
+    height: 42mm;
     margin: 0 0 3mm;
   }
-
   .print-landscape-kpis > div {
     min-width: 0;
-    height: 21mm;
-    padding: 2.5mm 3.5mm;
-    border: 0.3mm solid rgba(148, 163, 184, 0.26);
+    padding: 2.4mm 3mm;
+    border: .3mm solid rgba(148,163,184,.26);
     border-radius: 3mm;
-    background: rgba(15, 23, 42, 0.96);
+    background: rgba(15,23,42,.97);
     overflow: hidden;
   }
-
   .print-landscape-kpis span,
-  .print-landscape-kpis small {
-    display: block;
-    color: #94a3b8;
-    font-size: 7.2pt;
-    white-space: nowrap;
-  }
+  .print-landscape-kpis small { display: block; color: #94a3b8; font-size: 7.2pt; white-space: nowrap; }
+  .print-landscape-kpis strong { display: block; margin: .8mm 0; color: #f8fafc; font-size: 16pt; line-height: 1; }
 
-  .print-landscape-kpis strong {
-    display: block;
-    margin: 0.8mm 0;
-    color: #f8fafc;
-    font-size: 17pt;
-    line-height: 1;
-  }
-
-  .print-landscape-chart-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4mm;
-    height: 153mm;
-    min-height: 153mm;
-  }
-
-  .print-landscape-chart-grid-moisture {
-    height: 171mm;
-    min-height: 171mm;
-  }
+  .print-portrait-single-chart { height: 219mm; }
+  .print-portrait-two-charts { display: grid; grid-template-rows: repeat(2,minmax(0,1fr)); gap: 4mm; height: 251mm; }
+  .print-portrait-chart-summary { display: grid; grid-template-rows: 144mm 102mm; gap: 4mm; height: 250mm; }
 
   .print-landscape-chart-card {
     display: flex;
@@ -318,174 +266,109 @@ button {
     min-height: 0;
     height: 100%;
     padding: 3mm;
-    border: 0.3mm solid rgba(148, 163, 184, 0.28);
+    border: .3mm solid rgba(148,163,184,.28);
     border-radius: 3mm;
-    background: rgba(15, 23, 42, 0.98);
+    background: rgba(15,23,42,.98);
     overflow: hidden;
   }
-
   .print-landscape-chart-card h2 {
-    flex: 0 0 8mm;
-    height: 8mm;
+    flex: 0 0 auto;
     margin: 0 0 2mm;
     padding: 0 0 1.5mm;
-    border-bottom: 0.25mm solid rgba(148, 163, 184, 0.28);
+    border-bottom: .25mm solid rgba(148,163,184,.28);
     color: #f8fafc;
-    font-size: 9.5pt;
+    font-size: 9.4pt;
     line-height: 1.15;
-    overflow: hidden;
+    white-space: normal;
   }
-
   .print-landscape-chart-card .process-chart {
     flex: 1 1 auto;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
     box-shadow: none !important;
   }
-
   .print-landscape-chart-card .process-chart > svg {
     display: block !important;
     width: 100% !important;
     height: 100% !important;
     min-height: 0 !important;
   }
-
   .print-hide-event-timeline,
   .print-landscape-chart-card .chart-tooltip,
   .print-landscape-chart-card .dashboard-toggle,
-  .print-landscape-chart-card .toggle-dot {
-    display: none !important;
-  }
+  .print-landscape-chart-card .toggle-dot { display: none !important; }
 
-  .print-summary-layout {
-    display: grid;
-    grid-template-rows: 43mm 1fr;
-    gap: 3mm;
-    height: 171mm;
-    min-height: 171mm;
-  }
-
-  .print-summary-box,
-  .print-reference-table-wrap {
+  .print-summary-box {
     min-width: 0;
     min-height: 0;
     padding: 3mm 4mm;
-    border: 0.3mm solid #cbd5e1;
+    border: .3mm solid #cbd5e1;
     border-radius: 3mm;
-    background: #ffffff;
+    background: #fff;
+    color: #0f172a;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    grid-template-rows: auto 1fr;
+    column-gap: 4mm;
+  }
+  .print-summary-box h2 { grid-column: 1; margin: 0 0 1.5mm; font-size: 10pt; font-weight: 800; }
+  .print-summary-text { grid-column: 1; max-height: 84mm; overflow: hidden; white-space: pre-wrap; font-size: 7.5pt; line-height: 1.3; }
+  .print-summary-box h3 { grid-column: 2; grid-row: 1; margin: 0 0 1.5mm; font-size: 9pt; }
+  .print-summary-box ul,
+  .print-summary-box > p { grid-column: 2; grid-row: 2; margin: 0; padding-left: 4mm; overflow: hidden; }
+  .print-summary-box p,
+  .print-summary-box li { font-size: 6.8pt; line-height: 1.25; }
+
+  .print-reference-table-wrap {
+    height: 251mm;
+    min-height: 251mm;
+    padding: 2.5mm 3mm;
+    border: .3mm solid #cbd5e1;
+    border-radius: 3mm;
+    background: #fff;
     color: #0f172a;
     overflow: hidden;
   }
-
-  .print-summary-box {
-    display: grid;
-    grid-template-columns: 1.25fr 0.75fr;
-    grid-template-rows: auto 1fr;
-    column-gap: 5mm;
-  }
-
-  .print-summary-box h2 {
-    grid-column: 1;
-    margin: 0 0 1.5mm;
-    font-size: 10pt;
-    font-weight: 800;
-  }
-
-  .print-summary-text {
-    grid-column: 1;
-    max-height: 31mm;
-    overflow: hidden;
-    white-space: pre-wrap;
-    font-size: 7.4pt;
-    line-height: 1.28;
-  }
-
-  .print-summary-box h3 {
-    grid-column: 2;
-    grid-row: 1;
-    margin: 0 0 1.5mm;
-    font-size: 9pt;
-  }
-
-  .print-summary-box ul,
-  .print-summary-box > p {
-    grid-column: 2;
-    grid-row: 2;
-    margin: 0;
-    padding-left: 4mm;
-    overflow: hidden;
-  }
-
-  .print-summary-box p,
-  .print-summary-box li {
-    font-size: 6.8pt;
-    line-height: 1.25;
-  }
-
-  .print-reference-table-wrap {
-    padding: 2.5mm 3mm;
-  }
-
-  .print-reference-table-wrap h2 {
-    margin: 0 0 1.5mm;
-    font-size: 9.5pt;
-    font-weight: 800;
-  }
-
-  .print-reference-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    font-size: 5.7pt;
-    line-height: 1.05;
-  }
-
+  .print-reference-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 6.1pt; line-height: 1.05; }
   .print-reference-table th,
   .print-reference-table td {
-    height: 4.65mm;
-    max-height: 4.65mm;
-    padding: 0.45mm 0.6mm;
-    border: 0.2mm solid #cbd5e1;
+    height: 9.35mm;
+    max-height: 9.35mm;
+    padding: .55mm .6mm;
+    border: .2mm solid #cbd5e1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: center;
   }
-
-  .print-reference-table th {
-    background: #e2e8f0;
-    color: #0f172a;
-    font-weight: 800;
-  }
-
-  .print-reference-table th:nth-child(1) { width: 6%; }
-  .print-reference-table th:nth-child(2) { width: 10%; }
-  .print-reference-table th:nth-child(3) { width: 6%; }
+  .print-reference-table th { background: #e2e8f0; color: #0f172a; font-weight: 800; }
+  .print-reference-table th:nth-child(1) { width: 7%; }
+  .print-reference-table th:nth-child(2) { width: 12%; }
+  .print-reference-table th:nth-child(3) { width: 8%; }
   .print-reference-table th:nth-child(4),
   .print-reference-table th:nth-child(5),
   .print-reference-table th:nth-child(6),
   .print-reference-table th:nth-child(7),
-  .print-reference-table th:nth-child(8) { width: 7%; }
-  .print-reference-table th:nth-child(9) { width: 6%; }
-  .print-reference-table th:nth-child(10) { width: 21%; }
-
-  .print-reference-table td:last-child {
-    text-align: left;
-  }
+  .print-reference-table th:nth-child(8) { width: 7.5%; }
+  .print-reference-table th:nth-child(9) { width: 7%; }
+  .print-reference-table th:nth-child(10) { width: 21.5%; }
+  .print-reference-table td:last-child { text-align: left; }
 
   .print-page-footer {
     position: absolute;
-    left: 8mm;
-    right: 8mm;
-    bottom: 3mm;
+    left: 7mm;
+    right: 7mm;
+    bottom: 3.5mm;
     height: 5mm;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 4mm;
     padding-top: 1mm;
-    border-top: 0.25mm solid rgba(148, 163, 184, 0.55);
+    border-top: .25mm solid rgba(148,163,184,.55);
     color: #94a3b8;
     font-size: 7pt;
     line-height: 1;
@@ -493,4 +376,3 @@ button {
     white-space: nowrap;
   }
 }
-
