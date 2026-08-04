@@ -470,3 +470,35 @@ button {
   .print-landscape-page-1 .print-landscape-kpis { height: 50mm !important; margin-bottom: 2.5mm !important; }
   .print-landscape-page-3 .print-reference-table-wrap { max-height: 258mm !important; }
 }
+
+/* Print report layout v25: chart 4 matches the exact printed height of charts 1-3 */
+@media print {
+  .print-portrait-chart-summary-v24 {
+    display: grid !important;
+    grid-template-rows: 63.6mm auto !important;
+    align-content: start !important;
+    gap: 4mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .print-portrait-chart-summary-v24 > .print-landscape-chart-card {
+    height: 63.6mm !important;
+    min-height: 63.6mm !important;
+    max-height: 63.6mm !important;
+    padding: 2mm 2.5mm !important;
+  }
+
+  .print-portrait-chart-summary-v24 > .print-landscape-chart-card h2 {
+    margin-bottom: 1mm !important;
+    padding-bottom: .8mm !important;
+    font-size: 8pt !important;
+  }
+
+  .print-portrait-chart-summary-v24 > .print-summary-box {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 128mm !important;
+    align-self: start !important;
+  }
+}
