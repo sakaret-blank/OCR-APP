@@ -440,3 +440,33 @@ button {
     font-size: 6.8pt !important;
   }
 }
+
+/* Print report layout v24: page 1 has charts 1-3, compact balanced height */
+@media print {
+  .print-portrait-three-charts {
+    display: grid !important;
+    grid-template-rows: repeat(3, minmax(0, 1fr)) !important;
+    gap: 2.6mm !important;
+    height: 196mm !important;
+  }
+  .print-portrait-three-charts .print-landscape-chart-card {
+    padding: 2mm 2.5mm !important;
+  }
+  .print-portrait-three-charts .print-landscape-chart-card h2 {
+    margin-bottom: 1mm !important;
+    padding-bottom: .8mm !important;
+    font-size: 8pt !important;
+  }
+  .print-portrait-three-charts .process-chart {
+    min-height: 0 !important;
+  }
+  .print-portrait-chart-summary-v24 {
+    display: grid !important;
+    grid-template-rows: 119mm 128mm !important;
+    gap: 4mm !important;
+    height: 251mm !important;
+  }
+  .print-landscape-page-1 .print-landscape-header { height: 15mm !important; min-height: 15mm !important; margin-bottom: 2mm !important; }
+  .print-landscape-page-1 .print-landscape-kpis { height: 50mm !important; margin-bottom: 2.5mm !important; }
+  .print-landscape-page-3 .print-reference-table-wrap { max-height: 258mm !important; }
+}

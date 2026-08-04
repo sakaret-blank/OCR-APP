@@ -739,6 +739,22 @@ export default function App() {
         </tr>`;
     }).join('');
 
+    const getChartSvg = (selector) => {
+      const svg = document.querySelector(selector);
+      if (!svg) return '<div class="chart-empty">ไม่พบกราฟสำหรับส่งออก</div>';
+      const clone = svg.cloneNode(true);
+      clone.removeAttribute('width');
+      clone.removeAttribute('height');
+      clone.setAttribute('preserveAspectRatio', 'none');
+      clone.setAttribute('style', 'display:block;width:100%;height:100%;');
+      return clone.outerHTML;
+    };
+
+    const chart1 = getChartSvg('.print-chart-1 .process-chart svg');
+    const chart2 = getChartSvg('.print-chart-2 .process-chart svg');
+    const chart3 = getChartSvg('.print-chart-3 .process-chart svg');
+    const chart4 = getChartSvg('.print-chart-4 .process-chart svg');
+
     const printedAt = new Date().toLocaleString('th-TH');
     return `<!doctype html>
 <html lang="th">
@@ -747,21 +763,29 @@ export default function App() {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(getReportFileBaseName())}</title>
 <style>
-  body{margin:0;background:#f1f5f9;color:#0f172a;font-family:Arial,'Tahoma',sans-serif} .wrap{max-width:1100px;margin:0 auto;padding:20px}
-  .header{background:#0f172a;color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px}.header h1{margin:0 0 6px;font-size:24px}.header p{margin:0;color:#cbd5e1}
-  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.kpi{background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:16px}.kpi small{color:#64748b}.kpi strong{display:block;font-size:28px;margin:8px 0 4px}.section{background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:18px;margin-bottom:16px}.section h2{margin:0 0 12px;font-size:18px}.summary{white-space:pre-wrap;line-height:1.65}
-  table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:center;vertical-align:top}th{background:#e2e8f0}.remark{text-align:left;min-width:150px}.footer{text-align:center;color:#64748b;font-size:12px;padding:8px}
-  @media(max-width:760px){.wrap{padding:10px}.kpis{grid-template-columns:repeat(2,1fr)}.header h1{font-size:19px}table{font-size:10px}.table-scroll{overflow-x:auto}}
-  @media print{body{background:#fff}.wrap{max-width:none;padding:0}.section,.kpi,.header{break-inside:avoid}.footer{margin-top:12px}}
+  :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#070b14;color:#e2e8f0;font-family:Arial,'Tahoma',sans-serif}.wrap{max-width:1440px;margin:0 auto;padding:18px}
+  .header{display:flex;align-items:center;gap:14px;background:#0f172a;border:1px solid #334155;border-radius:16px;padding:16px 18px;margin-bottom:14px}.logo{width:54px;height:54px;border-radius:12px}.header h1{margin:0 0 5px;font-size:24px;color:#f8fafc}.header p{margin:0;color:#94a3b8}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.kpi,.section,.chart-card{background:#0f172a;border:1px solid #334155;border-radius:15px}.kpi{padding:15px;position:relative;overflow:hidden}.kpi small{color:#94a3b8}.kpi strong{display:block;font-size:27px;margin:7px 0 4px}.orange{color:#fb923c}.amber{color:#fbbf24}.indigo{color:#818cf8}.blue{color:#60a5fa}
+  .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px}.chart-card{padding:14px}.chart-card h2{margin:0 0 10px;font-size:16px;color:#f8fafc;border-bottom:1px solid #334155;padding-bottom:9px}.chart-box{height:310px;background:#050914;border:1px solid #273449;border-radius:12px;overflow:hidden}.chart-box svg{width:100%!important;height:100%!important}
+  .section{padding:17px;margin-bottom:14px}.section h2{margin:0 0 12px;font-size:18px;color:#f8fafc}.summary{white-space:pre-wrap;line-height:1.62;color:#cbd5e1}
+  .table-scroll{overflow:auto;border-radius:10px}table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;color:#0f172a}th,td{border:1px solid #cbd5e1;padding:5px 6px;text-align:center;vertical-align:top}th{background:#e2e8f0;position:sticky;top:0}.remark{text-align:left;min-width:145px}.footer{text-align:center;color:#64748b;font-size:12px;padding:8px}.chart-empty{display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8}
+  @media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.chart-box{height:280px}.wrap{padding:10px}.header h1{font-size:19px}.logo{width:44px;height:44px}}
+  @media print{body{background:#fff}.wrap{max-width:none;padding:0}.header,.kpi,.chart-card,.section{break-inside:avoid}.charts{grid-template-columns:1fr}.chart-box{height:250px}.footer{margin-top:10px}}
 </style>
 </head>
 <body><div class="wrap">
-  <div class="header"><h1>ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1><p>${escapeHtml(docInfo.code)} | วันที่เอกสาร: ${escapeHtml(docInfo.date)} | ${escapeHtml(getShiftLabel())}</p></div>
+  <div class="header"><img class="logo" src="${window.location.origin}/app-icon-64.png" alt="Drying OCR"><div><h1>ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1><p>${escapeHtml(docInfo.code)} | วันที่เอกสาร: ${escapeHtml(docInfo.date)} | ${escapeHtml(getShiftLabel())}</p></div></div>
   <div class="kpis">
-    <div class="kpi"><small>อุณหภูมิลมเข้า IN</small><strong>${escapeHtml(analytics.avgTempIn)} °C</strong><small>เกณฑ์ 140–160°C</small></div>
-    <div class="kpi"><small>อุณหภูมิปลายปล่อง OUT</small><strong>${escapeHtml(analytics.avgTempOut)} °C</strong><small>เกณฑ์ 50–65°C</small></div>
-    <div class="kpi"><small>ความชื้นแป้งหมาด WET</small><strong>${escapeHtml(analytics.avgWetMoist)} %</strong><small>เกณฑ์ 30–38%</small></div>
-    <div class="kpi"><small>ความชื้นแป้งแห้ง PROD</small><strong>${escapeHtml(analytics.avgProdMoist)} %</strong><small>เกณฑ์ 11.0–12.5%</small></div>
+    <div class="kpi"><small>อุณหภูมิลมเข้า IN</small><strong class="orange">${escapeHtml(analytics.avgTempIn)} °C</strong><small>เกณฑ์ 140–160°C</small></div>
+    <div class="kpi"><small>อุณหภูมิปลายปล่อง OUT</small><strong class="amber">${escapeHtml(analytics.avgTempOut)} °C</strong><small>เกณฑ์ 50–65°C</small></div>
+    <div class="kpi"><small>ความชื้นแป้งหมาด WET</small><strong class="indigo">${escapeHtml(analytics.avgWetMoist)} %</strong><small>เกณฑ์ 30–38%</small></div>
+    <div class="kpi"><small>ความชื้นแป้งแห้ง PROD</small><strong class="blue">${escapeHtml(analytics.avgProdMoist)} %</strong><small>เกณฑ์ 11.0–12.5%</small></div>
+  </div>
+  <div class="charts">
+    <div class="chart-card"><h2>1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)</h2><div class="chart-box">${chart1}</div></div>
+    <div class="chart-card"><h2>2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)</h2><div class="chart-box">${chart2}</div></div>
+    <div class="chart-card"><h2>3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)</h2><div class="chart-box">${chart3}</div></div>
+    <div class="chart-card"><h2>4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)</h2><div class="chart-box">${chart4}</div></div>
   </div>
   <div class="section"><h2>สรุปผลการวิเคราะห์</h2><div class="summary">${escapeHtml(summary)}</div></div>
   <div class="section"><h2>รายการความผิดปกติ (${analytics.anomalies.length} รายการ)</h2><div class="table-scroll"><table><thead><tr><th>เวลา</th><th>ชนิดแป้ง</th><th>รายละเอียด</th></tr></thead><tbody>${anomalyRows}</tbody></table></div></div>
@@ -1354,75 +1378,38 @@ export default function App() {
                     วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
                   </footer>
 
-                  {/* รายงานสำหรับพิมพ์ A4 แนวตั้ง แยก 4 หน้าอย่างชัดเจน */}
+                  {/* รายงานสำหรับพิมพ์ A4 แนวตั้ง 3 หน้า */}
                   <div className="print-landscape-report" aria-label="รายงาน A4 แนวตั้ง">
                     <section className="print-landscape-page print-landscape-page-1">
                       <div className="print-landscape-header">
                         <img src="/app-icon-64.png" alt="Drying OCR" />
-                        <div>
-                          <h1>ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1>
-                          <p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p>
-                        </div>
+                        <div><h1>ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1><p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p></div>
                       </div>
-
                       <div className="print-landscape-kpis">
                         <div><span>อุณหภูมิลมเข้า IN</span><strong>{analytics.avgTempIn} °C</strong><small>เกณฑ์ 140–160°C</small></div>
                         <div><span>อุณหภูมิปลายปล่อง OUT</span><strong>{analytics.avgTempOut} °C</strong><small>เกณฑ์ 50–65°C</small></div>
                         <div><span>ความชื้นแป้งหมาด WET</span><strong>{analytics.avgWetMoist} %</strong><small>เกณฑ์ 30–38%</small></div>
                         <div><span>ความชื้นแป้งแห้ง PROD</span><strong>{analytics.avgProdMoist} %</strong><small>เกณฑ์ 11.0–12.5%</small></div>
                       </div>
-
-                      <div className="print-portrait-single-chart">
-                        <article className="print-landscape-chart-card">
-                          <h2>1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)</h2>
-                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEvents={showChartEvents} showGradient={showChartGradient} />
-                        </article>
+                      <div className="print-portrait-three-charts">
+                        <article className="print-landscape-chart-card"><h2>1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
+                        <article className="print-landscape-chart-card"><h2>2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
+                        <article className="print-landscape-chart-card"><h2>3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
                       </div>
-
-                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 1 / 4</span></div>
+                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 1 / 3</span></div>
                     </section>
-
                     <section className="print-landscape-page print-landscape-page-2">
-                      <div className="print-landscape-section-title"><div><h1>กราฟอุณหภูมิและความชื้นกระบวนการอบแป้ง</h1><p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p></div></div>
-                      <div className="print-portrait-two-charts">
-                        <article className="print-landscape-chart-card">
-                          <h2>2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)</h2>
-                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} />
-                        </article>
-                        <article className="print-landscape-chart-card">
-                          <h2>3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)</h2>
-                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} />
-                        </article>
-                      </div>
-                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 2 / 4</span></div>
-                    </section>
-
-                    <section className="print-landscape-page print-landscape-page-3">
                       <div className="print-landscape-section-title"><div><h1>กราฟความชื้นแป้งแห้งและสรุปผลการวิเคราะห์</h1><p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p></div></div>
-                      <div className="print-portrait-chart-summary">
-                        <article className="print-landscape-chart-card">
-                          <h2>4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)</h2>
-                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} />
-                        </article>
-                        <div className="print-summary-box">
-                          <h2>สรุปผลการวิเคราะห์</h2>
-                          <div className="print-summary-text">{analysisSummary || buildAnalysisSummary()}</div>
-                          <h3>รายการความผิดปกติ ({analytics.anomalies.length} รายการ)</h3>
-                          {analytics.anomalies.length > 0 ? <ul>{analytics.anomalies.slice(0, 10).map((item, idx) => <li key={idx}>{item.time} น. ({item.pType}) — {item.issue}</li>)}</ul> : <p>ไม่พบค่าที่อยู่นอกเกณฑ์ในช่วงเวลาที่เลือก</p>}
-                        </div>
+                      <div className="print-portrait-chart-summary-v24">
+                        <article className="print-landscape-chart-card"><h2>4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
+                        <div className="print-summary-box"><h2>สรุปผลการวิเคราะห์</h2><div className="print-summary-text">{analysisSummary || buildAnalysisSummary()}</div><h3>รายการความผิดปกติ ({analytics.anomalies.length} รายการ)</h3>{analytics.anomalies.length > 0 ? <ul>{analytics.anomalies.slice(0, 10).map((item, idx) => <li key={idx}>{item.time} น. ({item.pType}) — {item.issue}</li>)}</ul> : <p>ไม่พบค่าที่อยู่นอกเกณฑ์ในช่วงเวลาที่เลือก</p>}</div>
                       </div>
-                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 3 / 4</span></div>
+                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 2 / 3</span></div>
                     </section>
-
-                    <section className="print-landscape-page print-landscape-page-4">
+                    <section className="print-landscape-page print-landscape-page-3">
                       <div className="print-landscape-section-title"><div><h1>ตารางข้อมูลอ้างอิง 24 ชั่วโมง</h1><p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p></div></div>
-                      <div className="print-reference-table-wrap">
-                        <table className="print-reference-table">
-                          <thead><tr><th>เวลา</th><th>ชนิดแป้ง</th><th>DW</th><th>IN</th><th>OUT</th><th>Speed</th><th>Wet</th><th>Prod</th><th>Filter</th><th>หมายเหตุ</th></tr></thead>
-                          <tbody>{data.map((row) => { const dw = ['dw1','dw2','dw3','dw4','dw5'].map((key, i) => row[key] ? String(i + 1) : '').filter(Boolean).join(','); return <tr key={`print-${row.id}`}><td>{row.time}</td><td>{row.productType}</td><td>{dw}</td><td>{row.hotAirIn}</td><td>{row.hotAirOut}</td><td>{row.speed}</td><td>{row.wetCakeMoisture}</td><td>{row.productMoisture}</td><td>{row.changeDwFilter}</td><td>{row.remark}</td></tr>; })}</tbody>
-                        </table>
-                      </div>
-                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 4 / 4</span></div>
+                      <div className="print-reference-table-wrap"><table className="print-reference-table"><thead><tr><th>เวลา</th><th>ชนิดแป้ง</th><th>DW</th><th>IN</th><th>OUT</th><th>Speed</th><th>Wet</th><th>Prod</th><th>Filter</th><th>หมายเหตุ</th></tr></thead><tbody>{data.map((row) => { const dw = ['dw1','dw2','dw3','dw4','dw5'].map((key, i) => row[key] ? String(i + 1) : '').filter(Boolean).join(','); return <tr key={`print-${row.id}`}><td>{row.time}</td><td>{row.productType}</td><td>{dw}</td><td>{row.hotAirIn}</td><td>{row.hotAirOut}</td><td>{row.speed}</td><td>{row.wetCakeMoisture}</td><td>{row.productMoisture}</td><td>{row.changeDwFilter}</td><td>{row.remark}</td></tr>; })}</tbody></table></div>
+                      <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 3 / 3</span></div>
                     </section>
                   </div>
 
