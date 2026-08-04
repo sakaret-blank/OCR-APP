@@ -151,7 +151,7 @@ button {
   display: none;
 }
 
-/* Print report layout v20: A4 landscape with three deterministic pages */
+/* Print report layout v21: fixed three-page A4 landscape report */
 .print-source-footer,
 .print-landscape-report {
   display: none;
@@ -163,11 +163,18 @@ button {
     margin: 0;
   }
 
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box !important;
+  }
+
   html,
   body,
   #root {
     width: 297mm !important;
     min-width: 297mm !important;
+    height: auto !important;
     min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -186,7 +193,8 @@ button {
     display: none !important;
   }
 
-  .print-report {
+  .print-report,
+  .print-landscape-report {
     display: block !important;
     width: 297mm !important;
     margin: 0 !important;
@@ -195,28 +203,27 @@ button {
     background: #ffffff !important;
   }
 
-  .print-landscape-report {
-    display: block !important;
-    width: 297mm !important;
-    background: #ffffff !important;
-    color: #0f172a !important;
-  }
-
   .print-landscape-page {
     position: relative;
-    width: 297mm;
-    height: 210mm;
-    padding: 8mm 9mm 12mm;
-    overflow: hidden;
-    background: #070b14;
-    color: #e2e8f0;
-    break-after: page;
-    page-break-after: always;
+    display: block;
+    width: 297mm !important;
+    height: 209mm !important;
+    min-height: 209mm !important;
+    max-height: 209mm !important;
+    margin: 0 !important;
+    padding: 7mm 8mm 11mm !important;
+    overflow: hidden !important;
+    background: #070b14 !important;
+    color: #e2e8f0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: page !important;
+    page-break-after: always !important;
   }
 
   .print-landscape-page:last-child {
-    break-after: auto;
-    page-break-after: auto;
+    break-after: auto !important;
+    page-break-after: auto !important;
   }
 
   .print-landscape-header,
@@ -224,63 +231,70 @@ button {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 15mm;
-    margin-bottom: 4mm;
-    padding: 3mm 4mm;
+    height: 14mm;
+    min-height: 14mm;
+    margin: 0 0 3mm;
+    padding: 2.2mm 3.5mm;
     border: 0.3mm solid rgba(148, 163, 184, 0.35);
     border-radius: 3mm;
     background: rgba(15, 23, 42, 0.96);
+    overflow: hidden;
   }
 
   .print-landscape-header h1,
   .print-landscape-section-title h1 {
     margin: 0;
     color: #f8fafc;
-    font-size: 15pt;
-    line-height: 1.15;
+    font-size: 14pt;
+    line-height: 1.05;
     font-weight: 800;
+    white-space: nowrap;
   }
 
   .print-landscape-header p,
   .print-landscape-section-title p {
-    margin: 1.2mm 0 0;
+    margin: 0.8mm 0 0;
     color: #94a3b8;
-    font-size: 8.5pt;
+    font-size: 8pt;
   }
 
   .print-landscape-header img {
-    width: 12mm;
-    height: 12mm;
-    border-radius: 2.5mm;
+    width: 10mm;
+    height: 10mm;
+    border-radius: 2mm;
   }
 
   .print-landscape-kpis {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 3mm;
-    margin-bottom: 4mm;
+    height: 21mm;
+    margin: 0 0 3mm;
   }
 
   .print-landscape-kpis > div {
-    min-height: 22mm;
-    padding: 3mm 4mm;
+    min-width: 0;
+    height: 21mm;
+    padding: 2.5mm 3.5mm;
     border: 0.3mm solid rgba(148, 163, 184, 0.26);
     border-radius: 3mm;
     background: rgba(15, 23, 42, 0.96);
+    overflow: hidden;
   }
 
   .print-landscape-kpis span,
   .print-landscape-kpis small {
     display: block;
     color: #94a3b8;
-    font-size: 7.5pt;
+    font-size: 7.2pt;
+    white-space: nowrap;
   }
 
   .print-landscape-kpis strong {
     display: block;
-    margin: 1mm 0;
+    margin: 0.8mm 0;
     color: #f8fafc;
-    font-size: 18pt;
+    font-size: 17pt;
     line-height: 1;
   }
 
@@ -288,15 +302,21 @@ button {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4mm;
-    height: 137mm;
+    height: 153mm;
+    min-height: 153mm;
   }
 
   .print-landscape-chart-grid-moisture {
-    height: 166mm;
+    height: 171mm;
+    min-height: 171mm;
   }
 
   .print-landscape-chart-card {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    min-height: 0;
+    height: 100%;
     padding: 3mm;
     border: 0.3mm solid rgba(148, 163, 184, 0.28);
     border-radius: 3mm;
@@ -305,27 +325,34 @@ button {
   }
 
   .print-landscape-chart-card h2 {
-    height: 9mm;
+    flex: 0 0 8mm;
+    height: 8mm;
     margin: 0 0 2mm;
-    padding-bottom: 2mm;
+    padding: 0 0 1.5mm;
     border-bottom: 0.25mm solid rgba(148, 163, 184, 0.28);
     color: #f8fafc;
-    font-size: 10pt;
-    line-height: 1.2;
+    font-size: 9.5pt;
+    line-height: 1.15;
+    overflow: hidden;
   }
 
   .print-landscape-chart-card .process-chart {
-    height: calc(100% - 11mm) !important;
+    flex: 1 1 auto;
+    width: 100% !important;
+    height: auto !important;
     min-height: 0 !important;
+    overflow: hidden !important;
     box-shadow: none !important;
   }
 
-  .print-landscape-chart-card .process-chart svg {
+  .print-landscape-chart-card .process-chart > svg {
+    display: block !important;
     width: 100% !important;
-    height: calc(100% - 8mm) !important;
+    height: 100% !important;
     min-height: 0 !important;
   }
 
+  .print-hide-event-timeline,
   .print-landscape-chart-card .chart-tooltip,
   .print-landscape-chart-card .dashboard-toggle,
   .print-landscape-chart-card .toggle-dot {
@@ -334,15 +361,17 @@ button {
 
   .print-summary-layout {
     display: grid;
-    grid-template-columns: 0.92fr 1.78fr;
-    gap: 4mm;
-    height: 166mm;
+    grid-template-rows: 43mm 1fr;
+    gap: 3mm;
+    height: 171mm;
+    min-height: 171mm;
   }
 
   .print-summary-box,
   .print-reference-table-wrap {
     min-width: 0;
-    padding: 4mm;
+    min-height: 0;
+    padding: 3mm 4mm;
     border: 0.3mm solid #cbd5e1;
     border-radius: 3mm;
     background: #ffffff;
@@ -350,50 +379,75 @@ button {
     overflow: hidden;
   }
 
-  .print-summary-box h2,
-  .print-reference-table-wrap h2 {
-    margin: 0 0 2.5mm;
-    font-size: 11pt;
+  .print-summary-box {
+    display: grid;
+    grid-template-columns: 1.25fr 0.75fr;
+    grid-template-rows: auto 1fr;
+    column-gap: 5mm;
+  }
+
+  .print-summary-box h2 {
+    grid-column: 1;
+    margin: 0 0 1.5mm;
+    font-size: 10pt;
     font-weight: 800;
   }
 
+  .print-summary-text {
+    grid-column: 1;
+    max-height: 31mm;
+    overflow: hidden;
+    white-space: pre-wrap;
+    font-size: 7.4pt;
+    line-height: 1.28;
+  }
+
   .print-summary-box h3 {
-    margin: 3mm 0 1.5mm;
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0 0 1.5mm;
     font-size: 9pt;
   }
 
-  .print-summary-text {
-    max-height: 90mm;
+  .print-summary-box ul,
+  .print-summary-box > p {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+    padding-left: 4mm;
     overflow: hidden;
-    white-space: pre-wrap;
-    font-size: 8.2pt;
-    line-height: 1.42;
   }
 
   .print-summary-box p,
   .print-summary-box li {
-    font-size: 7.7pt;
-    line-height: 1.35;
+    font-size: 6.8pt;
+    line-height: 1.25;
   }
 
-  .print-summary-box ul {
-    margin: 0;
-    padding-left: 4.5mm;
+  .print-reference-table-wrap {
+    padding: 2.5mm 3mm;
+  }
+
+  .print-reference-table-wrap h2 {
+    margin: 0 0 1.5mm;
+    font-size: 9.5pt;
+    font-weight: 800;
   }
 
   .print-reference-table {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
-    font-size: 6.15pt;
-    line-height: 1.1;
+    font-size: 5.7pt;
+    line-height: 1.05;
   }
 
   .print-reference-table th,
   .print-reference-table td {
-    height: 5.45mm;
-    padding: 0.7mm 0.8mm;
-    border: 0.22mm solid #cbd5e1;
+    height: 4.65mm;
+    max-height: 4.65mm;
+    padding: 0.45mm 0.6mm;
+    border: 0.2mm solid #cbd5e1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -406,16 +460,16 @@ button {
     font-weight: 800;
   }
 
-  .print-reference-table th:nth-child(1) { width: 7%; }
-  .print-reference-table th:nth-child(2) { width: 11%; }
-  .print-reference-table th:nth-child(3) { width: 7%; }
+  .print-reference-table th:nth-child(1) { width: 6%; }
+  .print-reference-table th:nth-child(2) { width: 10%; }
+  .print-reference-table th:nth-child(3) { width: 6%; }
   .print-reference-table th:nth-child(4),
   .print-reference-table th:nth-child(5),
   .print-reference-table th:nth-child(6),
   .print-reference-table th:nth-child(7),
-  .print-reference-table th:nth-child(8) { width: 7.5%; }
-  .print-reference-table th:nth-child(9) { width: 7%; }
-  .print-reference-table th:nth-child(10) { width: 20.5%; }
+  .print-reference-table th:nth-child(8) { width: 7%; }
+  .print-reference-table th:nth-child(9) { width: 6%; }
+  .print-reference-table th:nth-child(10) { width: 21%; }
 
   .print-reference-table td:last-child {
     text-align: left;
@@ -423,15 +477,20 @@ button {
 
   .print-page-footer {
     position: absolute;
-    left: 9mm;
-    right: 9mm;
-    bottom: 3.5mm;
+    left: 8mm;
+    right: 8mm;
+    bottom: 3mm;
+    height: 5mm;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-top: 1.8mm;
+    padding-top: 1mm;
     border-top: 0.25mm solid rgba(148, 163, 184, 0.55);
     color: #94a3b8;
-    font-size: 7.5pt;
+    font-size: 7pt;
+    line-height: 1;
+    overflow: hidden;
+    white-space: nowrap;
   }
 }
+

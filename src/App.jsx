@@ -1331,7 +1331,7 @@ export default function App() {
                       <div className="print-summary-layout">
                         <div className="print-summary-box">
                           <h2>สรุปผลการวิเคราะห์</h2>
-                          <div className="print-summary-text">{analysisSummary || 'ยังไม่ได้จัดทำสรุปผลการวิเคราะห์ กรุณากดปุ่ม “จัดทำสรุปผลการวิเคราะห์” ก่อนพิมพ์รายงาน'}</div>
+                          <div className="print-summary-text">{analysisSummary || buildAnalysisSummary()}</div>
                           <h3>รายการความผิดปกติ ({analytics.anomalies.length} รายการ)</h3>
                           {analytics.anomalies.length > 0 ? (
                             <ul>
@@ -1658,7 +1658,7 @@ function ProcessChart({
         })}
       </svg>
       {showEvents && showEventTimeline && timelineEvents.length > 0 && (
-        <div className="border-t border-slate-800 bg-slate-900/90 px-3 py-2">
+        <div className="print-hide-event-timeline border-t border-slate-800 bg-slate-900/90 px-3 py-2">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
             <span>เหตุการณ์ในช่วงที่เลือก</span>
             <span>{timelineEvents.length} รายการ</span>
