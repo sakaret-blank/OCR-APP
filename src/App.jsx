@@ -1262,9 +1262,106 @@ export default function App() {
                     )}
                   </section>
 
-                  <footer className="print-source-footer" aria-label="แหล่งที่มาของรายงาน">
-                    แหล่งที่มา: Windows, Mac/PC, OPPO (และยี่ห้ออื่น)/Android, iPad, iPhone/iOS
+                  <footer className="print-source-footer" aria-label="ข้อมูลการพิมพ์รายงาน">
+                    วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
                   </footer>
+
+                  {/* รายงานสำหรับพิมพ์ A4 แนวนอน แยกหน้าอย่างชัดเจน */}
+                  <div className="print-landscape-report" aria-label="รายงาน A4 แนวนอน">
+                    <section className="print-landscape-page print-landscape-page-1">
+                      <div className="print-landscape-header">
+                        <div>
+                          <h1>ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1>
+                          <p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p>
+                        </div>
+                        <img src="/app-icon-64.png" alt="Drying OCR" />
+                      </div>
+
+                      <div className="print-landscape-kpis">
+                        <div><span>อุณหภูมิลมเข้า IN</span><strong>{analytics.avgTempIn} °C</strong><small>เกณฑ์ 140–160°C</small></div>
+                        <div><span>อุณหภูมิปลายปล่อง OUT</span><strong>{analytics.avgTempOut} °C</strong><small>เกณฑ์ 50–65°C</small></div>
+                        <div><span>ความชื้นแป้งหมาด WET</span><strong>{analytics.avgWetMoist} %</strong><small>เกณฑ์ 30–38%</small></div>
+                        <div><span>ความชื้นแป้งแห้ง PROD</span><strong>{analytics.avgProdMoist} %</strong><small>เกณฑ์ 11.0–12.5%</small></div>
+                      </div>
+
+                      <div className="print-landscape-chart-grid">
+                        <article className="print-landscape-chart-card">
+                          <h2>1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)</h2>
+                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEvents={showChartEvents} showGradient={showChartGradient} />
+                        </article>
+                        <article className="print-landscape-chart-card">
+                          <h2>2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)</h2>
+                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} />
+                        </article>
+                      </div>
+
+                      <div className="print-page-footer">
+                        <span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+                        <span>หน้า 1 / 3</span>
+                      </div>
+                    </section>
+
+                    <section className="print-landscape-page print-landscape-page-2">
+                      <div className="print-landscape-section-title">
+                        <h1>กราฟความชื้นกระบวนการอบแป้ง</h1>
+                        <p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p>
+                      </div>
+                      <div className="print-landscape-chart-grid print-landscape-chart-grid-moisture">
+                        <article className="print-landscape-chart-card">
+                          <h2>3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)</h2>
+                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} />
+                        </article>
+                        <article className="print-landscape-chart-card">
+                          <h2>4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)</h2>
+                          <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} />
+                        </article>
+                      </div>
+                      <div className="print-page-footer">
+                        <span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+                        <span>หน้า 2 / 3</span>
+                      </div>
+                    </section>
+
+                    <section className="print-landscape-page print-landscape-page-3">
+                      <div className="print-landscape-section-title">
+                        <h1>สรุปผลการวิเคราะห์และตารางข้อมูลอ้างอิง</h1>
+                        <p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p>
+                      </div>
+
+                      <div className="print-summary-layout">
+                        <div className="print-summary-box">
+                          <h2>สรุปผลการวิเคราะห์</h2>
+                          <div className="print-summary-text">{analysisSummary || 'ยังไม่ได้จัดทำสรุปผลการวิเคราะห์ กรุณากดปุ่ม “จัดทำสรุปผลการวิเคราะห์” ก่อนพิมพ์รายงาน'}</div>
+                          <h3>รายการความผิดปกติ ({analytics.anomalies.length} รายการ)</h3>
+                          {analytics.anomalies.length > 0 ? (
+                            <ul>
+                              {analytics.anomalies.slice(0, 8).map((item, idx) => <li key={idx}>{item.time} น. ({item.pType}) — {item.issue}</li>)}
+                            </ul>
+                          ) : <p>ไม่พบค่าที่อยู่นอกเกณฑ์ในช่วงเวลาที่เลือก</p>}
+                        </div>
+
+                        <div className="print-reference-table-wrap">
+                          <h2>ตารางข้อมูลอ้างอิง 24 ชั่วโมง</h2>
+                          <table className="print-reference-table">
+                            <thead>
+                              <tr><th>เวลา</th><th>ชนิดแป้ง</th><th>DW</th><th>IN</th><th>OUT</th><th>Speed</th><th>Wet</th><th>Prod</th><th>Filter</th><th>หมายเหตุ</th></tr>
+                            </thead>
+                            <tbody>
+                              {data.map((row) => {
+                                const dw = ['dw1','dw2','dw3','dw4','dw5'].map((key, i) => row[key] ? String(i + 1) : '').filter(Boolean).join(',');
+                                return <tr key={`print-${row.id}`}><td>{row.time}</td><td>{row.productType}</td><td>{dw}</td><td>{row.hotAirIn}</td><td>{row.hotAirOut}</td><td>{row.speed}</td><td>{row.wetCakeMoisture}</td><td>{row.productMoisture}</td><td>{row.changeDwFilter}</td><td>{row.remark}</td></tr>;
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="print-page-footer">
+                        <span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+                        <span>หน้า 3 / 3</span>
+                      </div>
+                    </section>
+                  </div>
 
                 </div>
               )}

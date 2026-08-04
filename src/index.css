@@ -151,23 +151,26 @@ button {
   display: none;
 }
 
-/* Print report layout v9: deterministic A4 pages and controlled footer */
-.print-source-footer {
+/* Print report layout v20: A4 landscape with three deterministic pages */
+.print-source-footer,
+.print-landscape-report {
   display: none;
 }
 
 @media print {
   @page {
-    size: A4 portrait;
-    margin: 9mm 8mm 15mm;
+    size: A4 landscape;
+    margin: 0;
   }
 
   html,
   body,
   #root {
-    width: auto !important;
-    min-width: 0 !important;
+    width: 297mm !important;
+    min-width: 297mm !important;
     min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
     background: #ffffff !important;
   }
@@ -177,131 +180,258 @@ button {
     print-color-adjust: exact !important;
   }
 
-  .print-report-main-header {
-    position: static !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
+  .print-report-main-header,
+  .print-report > :not(.print-landscape-report),
+  .print-source-footer {
+    display: none !important;
   }
 
   .print-report {
+    display: block !important;
+    width: 297mm !important;
+    margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-    background: #070b14 !important;
+    background: #ffffff !important;
   }
 
-  .print-control-bar {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .print-kpi-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 3mm !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .print-chart-grid {
+  .print-landscape-report {
     display: block !important;
+    width: 297mm !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
   }
 
-  .print-chart-card {
-    width: 100% !important;
-    margin: 0 0 4mm !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
+  .print-landscape-page {
+    position: relative;
+    width: 297mm;
+    height: 210mm;
+    padding: 8mm 9mm 12mm;
+    overflow: hidden;
+    background: #070b14;
+    color: #e2e8f0;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .print-landscape-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .print-landscape-header,
+  .print-landscape-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 15mm;
+    margin-bottom: 4mm;
+    padding: 3mm 4mm;
+    border: 0.3mm solid rgba(148, 163, 184, 0.35);
+    border-radius: 3mm;
+    background: rgba(15, 23, 42, 0.96);
+  }
+
+  .print-landscape-header h1,
+  .print-landscape-section-title h1 {
+    margin: 0;
+    color: #f8fafc;
+    font-size: 15pt;
+    line-height: 1.15;
+    font-weight: 800;
+  }
+
+  .print-landscape-header p,
+  .print-landscape-section-title p {
+    margin: 1.2mm 0 0;
+    color: #94a3b8;
+    font-size: 8.5pt;
+  }
+
+  .print-landscape-header img {
+    width: 12mm;
+    height: 12mm;
+    border-radius: 2.5mm;
+  }
+
+  .print-landscape-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3mm;
+    margin-bottom: 4mm;
+  }
+
+  .print-landscape-kpis > div {
+    min-height: 22mm;
+    padding: 3mm 4mm;
+    border: 0.3mm solid rgba(148, 163, 184, 0.26);
+    border-radius: 3mm;
+    background: rgba(15, 23, 42, 0.96);
+  }
+
+  .print-landscape-kpis span,
+  .print-landscape-kpis small {
+    display: block;
+    color: #94a3b8;
+    font-size: 7.5pt;
+  }
+
+  .print-landscape-kpis strong {
+    display: block;
+    margin: 1mm 0;
+    color: #f8fafc;
+    font-size: 18pt;
+    line-height: 1;
+  }
+
+  .print-landscape-chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4mm;
+    height: 137mm;
+  }
+
+  .print-landscape-chart-grid-moisture {
+    height: 166mm;
+  }
+
+  .print-landscape-chart-card {
+    min-width: 0;
+    padding: 3mm;
+    border: 0.3mm solid rgba(148, 163, 184, 0.28);
+    border-radius: 3mm;
+    background: rgba(15, 23, 42, 0.98);
+    overflow: hidden;
+  }
+
+  .print-landscape-chart-card h2 {
+    height: 9mm;
+    margin: 0 0 2mm;
+    padding-bottom: 2mm;
+    border-bottom: 0.25mm solid rgba(148, 163, 184, 0.28);
+    color: #f8fafc;
+    font-size: 10pt;
+    line-height: 1.2;
+  }
+
+  .print-landscape-chart-card .process-chart {
+    height: calc(100% - 11mm) !important;
+    min-height: 0 !important;
     box-shadow: none !important;
   }
 
-  .print-chart-card > div:first-child,
-  .print-chart-card h3,
-  .print-chart-card p {
-    break-after: avoid;
-    page-break-after: avoid;
+  .print-landscape-chart-card .process-chart svg {
+    width: 100% !important;
+    height: calc(100% - 8mm) !important;
+    min-height: 0 !important;
   }
 
-  /* v10: หน้า 2 วางกราฟ 2 และ 3 ในหน้าเดียวกัน */
-  .print-chart-2,
-  .print-chart-3 {
-    margin-bottom: 2.5mm !important;
-  }
-
-  .print-chart-2 .process-chart svg,
-  .print-chart-3 .process-chart svg {
-    height: 225px !important;
-  }
-
-  .print-chart-2 .process-chart,
-  .print-chart-3 .process-chart {
-    border-radius: 10px !important;
-  }
-
-  /* หน้า 3: กราฟ 4 และสรุปความผิดปกติ */
-  .print-chart-4 .process-chart svg {
-    height: 235px !important;
-  }
-
-  .print-anomaly-summary {
-    font-size: 9pt !important;
-  }
-
-  .print-page-break {
-    break-before: page !important;
-    page-break-before: always !important;
-  }
-
-  .print-anomaly-summary {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    margin-bottom: 10mm !important;
-  }
-
-
-  .print-analysis-summary {
-    break-inside: auto;
-    page-break-inside: auto;
-    margin-bottom: 10mm !important;
-  }
-
-  .print-analysis-summary button,
-  .print-analysis-summary .analysis-summary-editor,
-  .print-analysis-summary > div:first-child p,
-  .print-analysis-summary > div:last-child {
+  .print-landscape-chart-card .chart-tooltip,
+  .print-landscape-chart-card .dashboard-toggle,
+  .print-landscape-chart-card .toggle-dot {
     display: none !important;
   }
 
-  .print-analysis-summary .analysis-summary-print {
-    display: block !important;
-    white-space: pre-wrap !important;
-    color: #0f172a !important;
-    background: #ffffff !important;
-    border: 0.3mm solid #cbd5e1;
-    border-radius: 2mm;
+  .print-summary-layout {
+    display: grid;
+    grid-template-columns: 0.92fr 1.78fr;
+    gap: 4mm;
+    height: 166mm;
+  }
+
+  .print-summary-box,
+  .print-reference-table-wrap {
+    min-width: 0;
     padding: 4mm;
-    font-size: 9pt !important;
-    line-height: 1.45 !important;
-  }
-
-  .print-source-footer {
-    display: block !important;
-    position: fixed;
-    left: 8mm;
-    right: 8mm;
-    bottom: 3mm;
-    padding-top: 2mm;
-    border-top: 0.3mm solid rgba(148, 163, 184, 0.55);
+    border: 0.3mm solid #cbd5e1;
+    border-radius: 3mm;
     background: #ffffff;
-    color: #475569;
-    font-size: 8pt;
-    line-height: 1.25;
-    text-align: center;
-    z-index: 9999;
+    color: #0f172a;
+    overflow: hidden;
   }
 
-  .chart-tooltip,
-  .dashboard-toggle,
-  .toggle-dot {
-    display: none !important;
+  .print-summary-box h2,
+  .print-reference-table-wrap h2 {
+    margin: 0 0 2.5mm;
+    font-size: 11pt;
+    font-weight: 800;
+  }
+
+  .print-summary-box h3 {
+    margin: 3mm 0 1.5mm;
+    font-size: 9pt;
+  }
+
+  .print-summary-text {
+    max-height: 90mm;
+    overflow: hidden;
+    white-space: pre-wrap;
+    font-size: 8.2pt;
+    line-height: 1.42;
+  }
+
+  .print-summary-box p,
+  .print-summary-box li {
+    font-size: 7.7pt;
+    line-height: 1.35;
+  }
+
+  .print-summary-box ul {
+    margin: 0;
+    padding-left: 4.5mm;
+  }
+
+  .print-reference-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 6.15pt;
+    line-height: 1.1;
+  }
+
+  .print-reference-table th,
+  .print-reference-table td {
+    height: 5.45mm;
+    padding: 0.7mm 0.8mm;
+    border: 0.22mm solid #cbd5e1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .print-reference-table th {
+    background: #e2e8f0;
+    color: #0f172a;
+    font-weight: 800;
+  }
+
+  .print-reference-table th:nth-child(1) { width: 7%; }
+  .print-reference-table th:nth-child(2) { width: 11%; }
+  .print-reference-table th:nth-child(3) { width: 7%; }
+  .print-reference-table th:nth-child(4),
+  .print-reference-table th:nth-child(5),
+  .print-reference-table th:nth-child(6),
+  .print-reference-table th:nth-child(7),
+  .print-reference-table th:nth-child(8) { width: 7.5%; }
+  .print-reference-table th:nth-child(9) { width: 7%; }
+  .print-reference-table th:nth-child(10) { width: 20.5%; }
+
+  .print-reference-table td:last-child {
+    text-align: left;
+  }
+
+  .print-page-footer {
+    position: absolute;
+    left: 9mm;
+    right: 9mm;
+    bottom: 3.5mm;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 1.8mm;
+    border-top: 0.25mm solid rgba(148, 163, 184, 0.55);
+    color: #94a3b8;
+    font-size: 7.5pt;
   }
 }
