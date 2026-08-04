@@ -701,6 +701,88 @@ export default function App() {
     return `รายงานการอบแป้ง_${safeDate}_${safeCode}`;
   };
 
+  const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const buildHtmlReport = () => {
+    const summary = analysisSummary || buildAnalysisSummary();
+    const anomalyRows = analytics.anomalies.length > 0
+      ? analytics.anomalies.map((item) => `
+          <tr>
+            <td>${escapeHtml(item.time)}</td>
+            <td>${escapeHtml(item.pType)}</td>
+            <td>${escapeHtml(item.issue)}</td>
+          </tr>`).join('')
+      : '<tr><td colspan="3">ไม่พบค่าที่อยู่นอกเกณฑ์ในช่วงเวลาที่เลือก</td></tr>';
+
+    const tableRows = data.map((row) => {
+      const dw = ['dw1','dw2','dw3','dw4','dw5']
+        .map((key, index) => row[key] ? String(index + 1) : '')
+        .filter(Boolean)
+        .join(', ');
+      return `
+        <tr>
+          <td>${escapeHtml(row.time)}</td>
+          <td>${escapeHtml(row.productType)}</td>
+          <td>${escapeHtml(dw)}</td>
+          <td>${escapeHtml(row.hotAirIn)}</td>
+          <td>${escapeHtml(row.hotAirOut)}</td>
+          <td>${escapeHtml(row.speed)}</td>
+          <td>${escapeHtml(row.wetCakeMoisture)}</td>
+          <td>${escapeHtml(row.productMoisture)}</td>
+          <td>${escapeHtml(row.changeDwFilter)}</td>
+          <td class="remark">${escapeHtml(row.remark)}</td>
+        </tr>`;
+    }).join('');
+
+    const printedAt = new Date().toLocaleString('th-TH');
+    return `<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(getReportFileBaseName())}</title>
+<style>
+  body{margin:0;background:#f1f5f9;color:#0f172a;font-family:Arial,'Tahoma',sans-serif} .wrap{max-width:1100px;margin:0 auto;padding:20px}
+  .header{background:#0f172a;color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px}.header h1{margin:0 0 6px;font-size:24px}.header p{margin:0;color:#cbd5e1}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.kpi{background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:16px}.kpi small{color:#64748b}.kpi strong{display:block;font-size:28px;margin:8px 0 4px}.section{background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:18px;margin-bottom:16px}.section h2{margin:0 0 12px;font-size:18px}.summary{white-space:pre-wrap;line-height:1.65}
+  table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:center;vertical-align:top}th{background:#e2e8f0}.remark{text-align:left;min-width:150px}.footer{text-align:center;color:#64748b;font-size:12px;padding:8px}
+  @media(max-width:760px){.wrap{padding:10px}.kpis{grid-template-columns:repeat(2,1fr)}.header h1{font-size:19px}table{font-size:10px}.table-scroll{overflow-x:auto}}
+  @media print{body{background:#fff}.wrap{max-width:none;padding:0}.section,.kpi,.header{break-inside:avoid}.footer{margin-top:12px}}
+</style>
+</head>
+<body><div class="wrap">
+  <div class="header"><h1>ระบบวิเคราะห์รายงานการอบแป้ง (DRYING PROCESS)</h1><p>${escapeHtml(docInfo.code)} | วันที่เอกสาร: ${escapeHtml(docInfo.date)} | ${escapeHtml(getShiftLabel())}</p></div>
+  <div class="kpis">
+    <div class="kpi"><small>อุณหภูมิลมเข้า IN</small><strong>${escapeHtml(analytics.avgTempIn)} °C</strong><small>เกณฑ์ 140–160°C</small></div>
+    <div class="kpi"><small>อุณหภูมิปลายปล่อง OUT</small><strong>${escapeHtml(analytics.avgTempOut)} °C</strong><small>เกณฑ์ 50–65°C</small></div>
+    <div class="kpi"><small>ความชื้นแป้งหมาด WET</small><strong>${escapeHtml(analytics.avgWetMoist)} %</strong><small>เกณฑ์ 30–38%</small></div>
+    <div class="kpi"><small>ความชื้นแป้งแห้ง PROD</small><strong>${escapeHtml(analytics.avgProdMoist)} %</strong><small>เกณฑ์ 11.0–12.5%</small></div>
+  </div>
+  <div class="section"><h2>สรุปผลการวิเคราะห์</h2><div class="summary">${escapeHtml(summary)}</div></div>
+  <div class="section"><h2>รายการความผิดปกติ (${analytics.anomalies.length} รายการ)</h2><div class="table-scroll"><table><thead><tr><th>เวลา</th><th>ชนิดแป้ง</th><th>รายละเอียด</th></tr></thead><tbody>${anomalyRows}</tbody></table></div></div>
+  <div class="section"><h2>ตารางข้อมูลอ้างอิง 24 ชั่วโมง</h2><div class="table-scroll"><table><thead><tr><th>เวลา</th><th>ชนิดแป้ง</th><th>DW</th><th>IN</th><th>OUT</th><th>Speed</th><th>Wet</th><th>Prod</th><th>Filter</th><th>หมายเหตุ</th></tr></thead><tbody>${tableRows}</tbody></table></div></div>
+  <div class="footer">จัดทำเมื่อ ${escapeHtml(printedAt)}</div>
+</div></body></html>`;
+  };
+
+  const handleDownloadHtmlReport = () => {
+    const html = buildHtmlReport();
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${getReportFileBaseName()}.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const buildAnalysisSummary = () => {
     const criticalItems = analytics.anomalies.filter((item) => item.level === 'red');
     const warningItems = analytics.anomalies.filter((item) => item.level === 'yellow');
@@ -911,6 +993,12 @@ export default function App() {
                       className="px-2.5 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 flex items-center text-xs font-semibold shadow-sm"
                     >
                       <FileText className="w-3.5 h-3.5 mr-1" /> จัดทำสรุปผลการวิเคราะห์
+                    </button>
+                    <button
+                      onClick={handleDownloadHtmlReport}
+                      className="px-2.5 py-1.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 flex items-center text-xs font-semibold shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1" /> ดาวน์โหลด HTML
                     </button>
                     <button
                       onClick={handleEmailReport}

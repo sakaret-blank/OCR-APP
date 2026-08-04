@@ -376,3 +376,67 @@ button {
     white-space: nowrap;
   }
 }
+
+/* Print report layout v23: remove blank pages, compact reference table, stable footer */
+@media print {
+  html, body, #root,
+  #root > div,
+  #root > div > div,
+  .print-report {
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #root { position: relative !important; }
+
+  .print-landscape-report {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    z-index: 99999 !important;
+    display: block !important;
+    width: 210mm !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .print-landscape-page {
+    width: 210mm !important;
+    height: 295mm !important;
+    min-height: 295mm !important;
+    max-height: 295mm !important;
+    padding: 7mm 7mm 11mm !important;
+  }
+
+  .print-landscape-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  .print-landscape-page-4 .print-reference-table-wrap {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 258mm !important;
+    padding: 2mm 2.5mm !important;
+  }
+
+  .print-reference-table {
+    font-size: 5.8pt !important;
+    line-height: 1 !important;
+  }
+
+  .print-reference-table th,
+  .print-reference-table td {
+    height: 7.55mm !important;
+    max-height: 7.55mm !important;
+    padding: .35mm .45mm !important;
+  }
+
+  .print-page-footer {
+    bottom: 3mm !important;
+    height: 4.5mm !important;
+    font-size: 6.8pt !important;
+  }
+}
