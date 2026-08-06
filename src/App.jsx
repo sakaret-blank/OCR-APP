@@ -18,6 +18,8 @@ import {
   Moon,
   Mail,
   Printer,
+  Pencil,
+  RotateCcw,
   Save,
   ScanLine,
   Sparkles,
@@ -388,6 +390,34 @@ const normalizeProcessEvent = (row) => {
 };
 
 
+const EVENT_COLORS = {
+  powerOutage: '#60a5fa',
+  stopDryer: '#ef4444',
+  startDryer: '#22c55e',
+  clothAction: '#38bdf8',
+  machineStop: '#f59e0b',
+};
+
+const getEventOverrideKey = (row, index = 0) => String(row?.id ?? row?.time ?? index);
+
+const resolveProcessEvent = (row, index, eventOverrides = {}) => {
+  const detected = normalizeProcessEvent(row);
+  const override = eventOverrides?.[getEventOverrideKey(row, index)];
+  if (override?.hidden) return null;
+  if (!detected && !override?.label) return null;
+  const type = override?.type || detected?.type || 'machineStop';
+  return {
+    ...(detected || {}),
+    ...override,
+    type,
+    time: override?.time || detected?.time || String(row?.time || '').replace('.', ':'),
+    label: override?.label || detected?.label || 'เหตุการณ์',
+    color: EVENT_COLORS[type] || override?.color || detected?.color || '#94a3b8',
+    edited: Boolean(override),
+  };
+};
+
+
 const parseReportDate = (value) => {
   const raw = String(value || '').trim();
   const match = raw.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
@@ -470,12 +500,13 @@ const summarizeHistoryRecord = (record) => {
 };
 
 function WeeklyTrendChart({ days, field, label, unit, minY, maxY, target, lineColor }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
   const width = 900;
-  const height = 260;
+  const height = 280;
   const left = 58;
   const right = 24;
-  const top = 32;
-  const bottom = 48;
+  const top = 38;
+  const bottom = 52;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
   const xFor = (index) => left + (index / Math.max(days.length - 1, 1)) * chartWidth;
@@ -491,17 +522,55 @@ function WeeklyTrendChart({ days, field, label, unit, minY, maxY, target, lineCo
   });
   if (current.length) segments.push(current);
   const ticks = [minY, (minY + maxY) / 2, maxY];
+  const gradientId = `weekly-gradient-${field}`;
+  const glowId = `weekly-glow-${field}`;
+  const baselineY = height - bottom;
+  const statusFor = (value) => {
+    if (value === null) return { label: 'ไม่มีข้อมูล', color: '#64748b' };
+    if (field === 'hotAirIn' && value < 130) return { label: 'วิกฤต', color: '#ef4444' };
+    if (field === 'wetCakeMoisture' && value > 38) return { label: 'วิกฤต', color: '#ef4444' };
+    if (field === 'productMoisture' && value > 14) return { label: 'วิกฤต', color: '#ef4444' };
+    if (value >= target[0] && value <= target[1]) return { label: 'ปกติ', color: '#22c55e' };
+    return { label: 'เฝ้าระวัง', color: '#f59e0b' };
+  };
+  const makeSmoothPath = (segment) => {
+    if (!segment.length) return '';
+    let path = `M ${xFor(segment[0].index)} ${yFor(segment[0].value)}`;
+    for (let i = 1; i < segment.length; i += 1) {
+      const previous = segment[i - 1];
+      const point = segment[i];
+      const previousX = xFor(previous.index);
+      const currentX = xFor(point.index);
+      const midX = (previousX + currentX) / 2;
+      path += ` C ${midX} ${yFor(previous.value)}, ${midX} ${yFor(point.value)}, ${currentX} ${yFor(point.value)}`;
+    }
+    return path;
+  };
+  const hovered = hoverIndex === null ? null : points[hoverIndex];
   return (
     <article className="weekly-chart-card">
-      <div className="weekly-chart-header"><div><h3>{label}</h3><p>ค่าเฉลี่ยเฉพาะวันที่มีรายงานการผลิต</p></div><span>{unit}</span></div>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="weekly-chart-svg" role="img" aria-label={label}>
-        <rect x={left} y={yFor(target[1])} width={chartWidth} height={Math.max(1, yFor(target[0]) - yFor(target[1]))} fill="#10b981" opacity="0.12" />
-        {ticks.map((tick) => <g key={tick}><line x1={left} x2={width-right} y1={yFor(tick)} y2={yFor(tick)} stroke="#334155" strokeDasharray="4 5"/><text x={left-10} y={yFor(tick)+4} textAnchor="end" fill="#94a3b8" fontSize="11">{tick}</text></g>)}
-        {days.map((day, index) => !day.record ? <rect key={`empty-${day.key}`} x={xFor(index)-32} y={top} width="64" height={chartHeight} fill="#64748b" opacity="0.08" rx="6" /> : null)}
-        {segments.map((segment, idx) => <polyline key={idx} points={segment.map((point) => `${xFor(point.index)},${yFor(point.value)}`).join(' ')} fill="none" stroke={lineColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />)}
-        {points.map((point) => point.value !== null && point.summary?.hasProduction ? <g key={point.key}><circle cx={xFor(point.index)} cy={yFor(point.value)} r="5" fill="#0f172a" stroke={lineColor} strokeWidth="3"/><title>{`${point.label}: ${point.value}${unit}`}</title></g> : null)}
-        {days.map((day, index) => <g key={day.key}><text x={xFor(index)} y={height-22} textAnchor="middle" fill="#cbd5e1" fontSize="11">{day.label}</text>{!day.record && <text x={xFor(index)} y={height-8} textAnchor="middle" fill="#64748b" fontSize="9">ไม่มีรายงาน</text>}</g>)}
-      </svg>
+      <div className="weekly-chart-header"><div><h3>{label}</h3><p>ค่าเฉลี่ยรายวัน · เส้นจะไม่เชื่อมข้ามวันที่ไม่มีข้อมูล</p></div><span>{unit}</span></div>
+      <div className="weekly-chart-stage">
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="weekly-chart-svg" role="img" aria-label={label}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={lineColor} stopOpacity="0.40"/><stop offset="100%" stopColor={lineColor} stopOpacity="0"/></linearGradient>
+            <filter id={glowId} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <rect x={left} y={yFor(target[1])} width={chartWidth} height={Math.max(1, yFor(target[0]) - yFor(target[1]))} fill="#10b981" opacity="0.13" />
+          {ticks.map((tick) => <g key={tick}><line x1={left} x2={width-right} y1={yFor(tick)} y2={yFor(tick)} stroke="#334155" strokeDasharray="4 5"/><text x={left-10} y={yFor(tick)+4} textAnchor="end" fill="#94a3b8" fontSize="11">{tick}{unit}</text></g>)}
+          {days.map((day, index) => !day.record ? <rect key={`empty-${day.key}`} x={xFor(index)-Math.min(34, chartWidth/Math.max(days.length,1)/2)} y={top} width={Math.min(68, chartWidth/Math.max(days.length,1))} height={chartHeight} fill="#64748b" opacity="0.055" rx="7" /> : null)}
+          {segments.map((segment, idx) => {
+            const path = makeSmoothPath(segment);
+            const firstX = xFor(segment[0].index);
+            const lastX = xFor(segment[segment.length-1].index);
+            return <g key={idx}><path d={`${path} L ${lastX} ${baselineY} L ${firstX} ${baselineY} Z`} fill={`url(#${gradientId})`} opacity="0.9"/><path d={path} fill="none" stroke={lineColor} strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" filter={`url(#${glowId})`}/></g>;
+          })}
+          {hovered && <line x1={xFor(hovered.index)} x2={xFor(hovered.index)} y1={top} y2={baselineY} stroke="#cbd5e1" strokeDasharray="3 5" opacity="0.55"/>}
+          {points.map((point) => point.value !== null && point.summary?.hasProduction ? <g key={point.key}><circle cx={xFor(point.index)} cy={yFor(point.value)} r={hoverIndex===point.index?7:5} fill="#08111f" stroke={lineColor} strokeWidth="3" filter={`url(#${glowId})`}/><circle cx={xFor(point.index)} cy={yFor(point.value)} r={hoverIndex===point.index?3.2:2.4} fill={statusFor(point.value).color}/></g> : null)}
+          {days.map((day, index) => <g key={day.key}><rect x={xFor(index)-Math.max(18, chartWidth/Math.max(days.length,1)/2)} y={top} width={Math.max(36, chartWidth/Math.max(days.length,1))} height={chartHeight+38} fill="transparent" onMouseEnter={()=>setHoverIndex(index)} onMouseLeave={()=>setHoverIndex(null)}/><text x={xFor(index)} y={height-23} textAnchor="middle" fill={hoverIndex===index?'#f8fafc':'#cbd5e1'} fontSize="11" fontWeight={hoverIndex===index?'700':'400'}>{day.label}</text>{!day.record && <text x={xFor(index)} y={height-8} textAnchor="middle" fill="#64748b" fontSize="9">ไม่มีรายงาน</text>}</g>)}
+        </svg>
+        {hovered && <div className="weekly-chart-tooltip"><strong>{hovered.label}</strong><span>{hovered.value === null ? (hovered.record ? 'ไม่มีการผลิต' : 'ไม่มีรายงาน') : `${hovered.value}${unit}`}</span>{hovered.value !== null && <small style={{color:statusFor(hovered.value).color}}>{statusFor(hovered.value).label}</small>}</div>}
+      </div>
     </article>
   );
 }
@@ -522,6 +591,7 @@ export default function App() {
   const [historySortMode, setHistorySortMode] = useState('DATE_DESC');
   const [showChartEvents, setShowChartEvents] = useState(true);
   const [showChartGradient, setShowChartGradient] = useState(true);
+  const [eventOverrides, setEventOverrides] = useState({});
   const [saveStatus, setSaveStatus] = useState('');
   
   const [showImagePane, setShowImagePane] = useState(false);
@@ -583,6 +653,37 @@ export default function App() {
     if (analysisSummary) setSummaryNeedsRefresh(true);
   };
 
+  const editDetectedEvent = (row, index, detectedEvent) => {
+    const key = getEventOverrideKey(row, index);
+    const nextTime = window.prompt('แก้ไขเวลาเหตุการณ์ (HH:MM)', detectedEvent.time || String(row.time || '').replace('.', ':'));
+    if (nextTime === null) return;
+    if (!/^([01]?\d|2[0-4]):[0-5]\d$/.test(nextTime.trim())) {
+      setStatusMessage('⚠️ รูปแบบเวลาไม่ถูกต้อง กรุณาใช้ HH:MM เช่น 12:58');
+      return;
+    }
+    const nextLabel = window.prompt('แก้ไขชื่อเหตุการณ์', detectedEvent.label || 'เหตุการณ์');
+    if (nextLabel === null || !nextLabel.trim()) return;
+    setEventOverrides((current) => ({
+      ...current,
+      [key]: { ...(current[key] || {}), time: nextTime.trim().padStart(5, '0'), label: nextLabel.trim(), type: detectedEvent.type, hidden: false },
+    }));
+    setSaveStatus('แก้ไขเหตุการณ์แล้ว กรุณาบันทึกประวัติ');
+  };
+
+  const hideDetectedEvent = (row, index, detectedEvent) => {
+    if (!window.confirm(`ซ่อนเหตุการณ์ “${detectedEvent.time} · ${detectedEvent.label}” ออกจากกราฟและรายงานหรือไม่?\nข้อมูลต้นฉบับในตารางจะยังคงอยู่`)) return;
+    const key = getEventOverrideKey(row, index);
+    setEventOverrides((current) => ({ ...current, [key]: { ...(current[key] || {}), hidden: true, type: detectedEvent.type } }));
+    setSaveStatus('ซ่อนเหตุการณ์แล้ว กรุณาบันทึกประวัติ');
+  };
+
+  const restoreDetectedEvents = () => {
+    if (!Object.keys(eventOverrides).length) return;
+    if (!window.confirm('คืนค่ารายการเหตุการณ์ทั้งหมดให้ตรวจจับจากข้อมูลในตารางอีกครั้งหรือไม่?')) return;
+    setEventOverrides({});
+    setSaveStatus('คืนค่าเหตุการณ์จากข้อมูลต้นฉบับแล้ว กรุณาบันทึกประวัติ');
+  };
+
   const autoFixDittoMarks = () => {
     let lastType = '';
     const newData = data.map((row) => {
@@ -613,6 +714,7 @@ export default function App() {
       setReportDateRaw('');
       setDateEditedByUser(false);
       setCurrentHistoryId(null);
+      setEventOverrides({});
       setAnalysisSummary('');
       setSummaryGeneratedAt('');
       setSummaryNeedsRefresh(false);
@@ -656,6 +758,7 @@ export default function App() {
         formattedRows = flagIsolatedNumericOutliers(alignOcrRowsToCanonicalTimes(result.rows));
         
         setData(formattedRows);
+        setEventOverrides({});
         setAnalysisSummary('');
         setSummaryGeneratedAt('');
         setSummaryNeedsRefresh(false);
@@ -692,7 +795,8 @@ export default function App() {
       reportDateISO: dateKey,
       code: codeStr,
       timestamp: new Date().toISOString(),
-      rows: rowsData
+      rows: rowsData,
+      eventOverrides: metadata.eventOverrides ?? eventOverrides
     };
 
     let updatedHistory = history.filter((item) => item.id !== reportId);
@@ -718,6 +822,7 @@ export default function App() {
       id: currentHistoryId,
       reportDateRaw: reportDateRaw || docInfo.date,
       dateEditedByUser,
+      eventOverrides,
     });
     setCurrentHistoryId(savedId);
     setSaveStatus(duplicate ? 'แทนที่รายงานเดิมของวันที่นี้เรียบร้อยแล้ว' : 'บันทึกประวัติลงเครื่องเรียบร้อยแล้ว');
@@ -730,6 +835,7 @@ export default function App() {
     setDateEditedByUser(Boolean(record.dateEditedByUser));
     setCurrentHistoryId(record.id);
     setData(record.rows);
+    setEventOverrides(record.eventOverrides || {});
     setAnalysisSummary('');
     setSummaryGeneratedAt('');
     setSummaryNeedsRefresh(false);
@@ -1521,7 +1627,7 @@ export default function App() {
                           {analytics.avgTempIn} °C
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEventTimeline showEvents={showChartEvents} showGradient={showChartGradient} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEventTimeline showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} onEditEvent={editDetectedEvent} onHideEvent={hideDetectedEvent} onRestoreEvents={restoreDetectedEvents} />
                     </div>
 
                     <div className="chart-glass-card print-chart-card print-chart-2 print-page-break space-y-3">
@@ -1536,7 +1642,7 @@ export default function App() {
                           {analytics.avgTempOut} °C
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} />
                     </div>
 
                     <div className="chart-glass-card print-chart-card print-chart-3 space-y-3">
@@ -1551,7 +1657,7 @@ export default function App() {
                           {analytics.avgWetMoist} %
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} />
                     </div>
 
                     <div className="chart-glass-card print-chart-card print-chart-4 print-page-break space-y-3">
@@ -1566,7 +1672,7 @@ export default function App() {
                           {analytics.avgProdMoist} %
                         </span>
                       </div>
-                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} />
+                      <ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} />
                     </div>
 
                   </div>
@@ -1668,16 +1774,16 @@ export default function App() {
                         <div><span>ความชื้นแป้งแห้ง PROD</span><strong>{analytics.avgProdMoist} %</strong><small>เกณฑ์ 11.0–12.5%</small></div>
                       </div>
                       <div className="print-portrait-three-charts">
-                        <article className="print-landscape-chart-card"><h2>1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
-                        <article className="print-landscape-chart-card"><h2>2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
-                        <article className="print-landscape-chart-card"><h2>3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
+                        <article className="print-landscape-chart-card"><h2>1. กราฟอุณหภูมิลมร้อนขาเข้า IN (อบแป้ง)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirIn" minY={100} maxY={180} ticks={[100,120,140,160,180]} target={[140,160]} lineColor="#fb923c" unit="°C" valueLabel="ลมร้อนเข้า IN" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} /></article>
+                        <article className="print-landscape-chart-card"><h2>2. กราฟอุณหภูมิปลายปล่อง OUT (แป้งแห้ง)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="hotAirOut" minY={35} maxY={85} ticks={[40,50,60,70,80]} target={[50,65]} lineColor="#fbbf24" unit="°C" valueLabel="ปลายปล่อง OUT" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} /></article>
+                        <article className="print-landscape-chart-card"><h2>3. กราฟความชื้นแป้งหมาด (% WET MOISTURE)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="wetCakeMoisture" minY={20} maxY={45} ticks={[20,25,30,35,38,40,45]} target={[30,38]} lineColor="#818cf8" unit="%" valueLabel="ความชื้นแป้งหมาด WET" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} /></article>
                       </div>
                       <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 1 / 3</span></div>
                     </section>
                     <section className="print-landscape-page print-landscape-page-2">
                       <div className="print-landscape-section-title"><div><h1>กราฟความชื้นแป้งแห้งและสรุปผลการวิเคราะห์</h1><p>{docInfo.code} | วันที่เอกสาร: {docInfo.date}</p></div></div>
                       <div className="print-portrait-chart-summary-v24">
-                        <article className="print-landscape-chart-card"><h2>4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} /></article>
+                        <article className="print-landscape-chart-card"><h2>4. กราฟความชื้นแป้งแห้ง (% PRODUCT MOISTURE)</h2><ProcessChart dataset={currentFilteredData} resolvedTypes={resolvedFilteredProductTypes} field="productMoisture" minY={8} maxY={18} ticks={[8,10,11,12.5,14,16,18]} target={[11,12.5]} lineColor="#60a5fa" unit="%" valueLabel="ความชื้นแป้งแห้ง PROD" showEvents={showChartEvents} showGradient={showChartGradient} eventOverrides={eventOverrides} /></article>
                         <div className="print-summary-box"><h2>สรุปผลการวิเคราะห์</h2><div className="print-summary-text">{analysisSummary || buildAnalysisSummary()}</div><h3>รายการความผิดปกติ ({analytics.anomalies.length} รายการ)</h3>{analytics.anomalies.length > 0 ? <ul>{analytics.anomalies.slice(0, 10).map((item, idx) => <li key={idx}>{item.time} น. ({item.pType}) — {item.issue}</li>)}</ul> : <p>ไม่พบค่าที่อยู่นอกเกณฑ์ในช่วงเวลาที่เลือก</p>}</div>
                       </div>
                       <div className="print-page-footer"><span>วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} เวลา: {new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span><span>หน้า 2 / 3</span></div>
@@ -1785,6 +1891,10 @@ function ProcessChart({
   showEventTimeline = false,
   showEvents = true,
   showGradient = true,
+  eventOverrides = {},
+  onEditEvent = null,
+  onHideEvent = null,
+  onRestoreEvents = null,
 }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   if (!dataset || dataset.length === 0) return null;
@@ -1840,7 +1950,7 @@ function ProcessChart({
   };
 
   const events = dataset.map((row, index) => {
-    const event = normalizeProcessEvent(row);
+    const event = resolveProcessEvent(row, index, eventOverrides);
     if (!event) return null;
     let minute = parseMinutes(event.time);
     if (minute === null) minute = rowMinutes[index];
@@ -1998,16 +2108,18 @@ function ProcessChart({
         <div className="print-hide-event-timeline border-t border-slate-800 bg-slate-900/90 px-3 py-2">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
             <span>เหตุการณ์ในช่วงที่เลือก</span>
-            <span>{timelineEvents.length} รายการ</span>
+            <span className="flex items-center gap-2"><span>{timelineEvents.length} รายการ</span>{onRestoreEvents && Object.keys(eventOverrides).length > 0 && <button type="button" onClick={onRestoreEvents} className="event-restore-button"><RotateCcw className="h-3 w-3"/> คืนค่า AI</button>}</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {timelineEvents.map(({ index, event }) => (
               <span
                 key={`${index}-${event.type}-${event.time}`}
-                className="rounded-md border px-2 py-1 text-[10px] font-semibold"
+                className="event-edit-chip"
                 style={{ borderColor: `${event.color}66`, color: event.color, backgroundColor: `${event.color}14` }}
               >
-                {event.time} · {event.label}
+                <span>{event.time} · {event.label}{event.edited ? ' (แก้ไขแล้ว)' : ''}</span>
+                {onEditEvent && <button type="button" title="แก้ไขเหตุการณ์" onClick={() => onEditEvent(dataset[index], index, event)}><Pencil className="h-3 w-3"/></button>}
+                {onHideEvent && <button type="button" title="ซ่อนเหตุการณ์" onClick={() => onHideEvent(dataset[index], index, event)}><EyeOff className="h-3 w-3"/></button>}
               </span>
             ))}
           </div>
@@ -2015,7 +2127,7 @@ function ProcessChart({
       )}
       {hoverIndex !== null && dataset[hoverIndex] && (() => {
         const row = dataset[hoverIndex];
-        const event = normalizeProcessEvent(row);
+        const event = resolveProcessEvent(row, hoverIndex, eventOverrides);
         const status = getStatus(row[field]);
         return <div className="chart-tooltip pointer-events-none absolute left-3 top-3 z-20 min-w-[220px] rounded-xl border border-white/10 bg-slate-950/90 p-3 text-xs shadow-2xl backdrop-blur-xl">
           <p className="font-bold text-white">{row.time} น. · {resolvedTypes[hoverIndex] || '-'}</p>

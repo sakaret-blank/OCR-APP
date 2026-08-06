@@ -536,3 +536,14 @@ button {
 .weekly-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 @media(max-width:1100px){.weekly-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.weekly-range-controls{align-items:stretch}.weekly-date-field{flex:1 1 140px}.weekly-range-button{justify-content:center}.weekly-summary-grid{grid-template-columns:1fr 1fr}}
+
+/* v29: editable process events + weekly chart visual parity */
+.event-edit-chip{display:inline-flex;align-items:center;gap:6px;border-width:1px;border-style:solid;border-radius:8px;padding:5px 7px;font-size:10px;font-weight:700}
+.event-edit-chip button{display:inline-flex;align-items:center;justify-content:center;border:1px solid currentColor;border-radius:5px;padding:2px;opacity:.68;transition:opacity .15s,background .15s}
+.event-edit-chip button:hover{opacity:1;background:rgba(255,255,255,.09)}
+.event-restore-button{display:inline-flex;align-items:center;gap:3px;border:1px solid #475569;border-radius:6px;padding:3px 6px;color:#cbd5e1;background:#0f172a;font-size:9px;font-weight:700}
+.weekly-chart-card{position:relative;background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(8,13,24,.98));box-shadow:0 16px 40px rgba(2,6,23,.26),inset 0 1px 0 rgba(255,255,255,.025)}
+.weekly-chart-stage{position:relative;overflow:hidden;border-radius:12px;background:#080d18}
+.weekly-chart-svg{background:radial-gradient(circle at 72% 18%,rgba(30,64,175,.11),transparent 34%),#080d18}
+.weekly-chart-tooltip{position:absolute;left:14px;top:12px;z-index:5;display:flex;min-width:150px;flex-direction:column;gap:2px;border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(2,6,23,.90);padding:9px 11px;color:#f8fafc;font-size:11px;box-shadow:0 16px 34px rgba(0,0,0,.38);backdrop-filter:blur(10px)}
+.weekly-chart-tooltip strong{font-size:12px}.weekly-chart-tooltip span{font-weight:800}.weekly-chart-tooltip small{font-weight:700}
