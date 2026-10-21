@@ -11,8 +11,44 @@ const TIMES = [
   '02.00', '03.00', '04.00', '05.00', '06.00', '07.00',
 ];
 
-// ใช้รุ่นปัจจุบันก่อน และสลับรุ่นสำรองหากบัญชีเรียกรุ่นแรกไม่ได้
-const MODELS_TO_TRY = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+// รายชื่อโมเดลเริ่มต้น เรียงตามลำดับที่จะลอง
+// หมายเหตุ: gemini-3.5-flash และ gemini-3.7-flash ถูกเลิกใช้และ Google ส่งต่อไปยังรุ่นใหม่กว่าอัตโนมัติ
+// จึงไม่ใส่ไว้ เพราะจะไปใช้โควตาเดียวกับรุ่นที่ส่งต่อไป
+// ปรับรายชื่อได้โดยไม่ต้องแก้โค้ด: ตั้งตัวแปร GEMINI_MODELS ใน Cloudflare (คั่นด้วย ,)
+const DEFAULT_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+];
+
+function getModels(env, preferred) {
+  const fromEnv = String(env.GEMINI_MODELS || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const list = fromEnv.length ? fromEnv : DEFAULT_MODELS;
+
+  // รอบที่สองเริ่มจากรุ่นที่ใช้ได้ในรอบแรก เพื่อไม่ให้เสียโควตาไปกับรุ่นที่ล้มเหลวซ้ำ
+  if (preferred && list.includes(preferred)) {
+    return [preferred, ...list.filter((m) => m !== preferred)];
+  }
+  return list;
+}
+
+// โหมด precheck (ตรวจทิศทาง/ตรวจว่าเป็นรายงานหรือไม่) ใช้รุ่นเล็กก่อนเพื่อประหยัดโควตา
+// ปรับได้ที่ตัวแปร GEMINI_PRECHECK_MODELS (คั่นด้วย ,)
+const DEFAULT_PRECHECK_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+];
+
+function getPrecheckModels(env) {
+  const fromEnv = String(env.GEMINI_PRECHECK_MODELS || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return fromEnv.length ? fromEnv : DEFAULT_PRECHECK_MODELS;
+}
 
 const CORE_FIELDS = [
   'productType',
@@ -119,10 +155,18 @@ function extractCandidateText(apiData) {
   return parts.map((part) => part?.text || '').join('').trim();
 }
 
-async function callGemini({ apiKey, imageBase64, systemInstruction, prompt }) {
+// ลองโมเดลตามลำดับใน models จนกว่าจะได้ผล ถ้าล้มทุกตัวจะรวมข้อความ error ของทุกรุ่นส่งกลับ
+async function callGemini({
+  apiKey,
+  models,
+  imageBase64,
+  systemInstruction,
+  prompt,
+  maxOutputTokens = 16384,
+}) {
   const errors = [];
 
-  for (const model of MODELS_TO_TRY) {
+  for (const model of models) {
     try {
       const url =
         `https://generativelanguage.googleapis.com/v1beta/models/` +
@@ -154,7 +198,7 @@ async function callGemini({ apiKey, imageBase64, systemInstruction, prompt }) {
           ],
           generationConfig: {
             responseMimeType: 'application/json',
-            maxOutputTokens: 16384,
+            maxOutputTokens,
           },
         }),
       });
@@ -338,8 +382,6 @@ Pay special attention to 1/7, 3/5, 5/8, 8/9 and decimal points.
 
 6. REMARK
 Copy only handwriting visibly located in the REMARK cell of that row.
-Preserve the original event wording exactly. "Power Stop", "Power Off" or "ไฟดับ" must remain power-related wording and must NEVER be rewritten as "Stop Dryer" or "หยุดอบแป้ง".
-Likewise, preserve "Stop Dryer", "Start Dryer", "Power Stop" and other distinct events as separate meanings.
 If no remark ink exists, output "-".
 Do not duplicate the same remark into another row.
 
@@ -435,6 +477,67 @@ For each individual cell, output "/" only when pen ink is visibly present; other
 Return only JSON.
 `;
 
+// ===== โหมด precheck: ตรวจว่าเป็นรายงานหรือไม่ และต้องหมุนภาพกี่องศาก่อนอ่าน =====
+const PRECHECK_SYSTEM = `
+You inspect ONE photo. It may or may not be a Thai factory form named "DRYING PROCESS OPERATION REPORT" (document code FM-PD-010).
+
+The printed form is LANDSCAPE. Its title "DRYING PROCESS OPERATION REPORT" is printed in a box along the top edge, the company name is at the top-left, and a table with a TIME column (08.00, 09.00, ...) is below. Photos are often taken with the paper or the phone turned, so the form can appear sideways or upside down.
+
+Answer these fields:
+
+1. isDryingReport
+   true only when the photo clearly shows this form. false for any other photo or document.
+
+2. rotationDegrees
+   The number of degrees the image must be rotated CLOCKWISE so the printed text becomes upright and reads left to right.
+   Allowed values: 0, 90, 180, 270.
+   - 0   = already upright.
+   - 90  = the printed title currently reads from the BOTTOM of the photo toward the TOP (the tops of the letters face left).
+   - 180 = upside down.
+   - 270 = the printed title currently reads from the TOP of the photo toward the BOTTOM (the tops of the letters face right).
+   Judge by the printed text (title, column headings), not by the handwriting and not by the clipboard or background.
+   If isDryingReport is false, use 0.
+
+3. reportDate
+   The handwritten date next to "Date" exactly as written (for example "20/10/26"). Use "-" if it cannot be read or does not exist.
+
+4. imageQuality
+   One of: "good", "blurry", "cropped", "dark", "glare".
+   Use "cropped" if part of the table is cut off.
+
+Return one JSON object only, with no markdown and no explanation:
+{
+  "isDryingReport": true,
+  "rotationDegrees": 0,
+  "reportDate": "-",
+  "imageQuality": "good"
+}
+`;
+
+const PRECHECK_PROMPT = `
+Look at the whole photo and return the JSON object described in the instructions.
+`;
+
+const IMAGE_QUALITIES = ['good', 'blurry', 'cropped', 'dark', 'glare'];
+
+function normalizePrecheckResult(result) {
+  const rawRotation = Number(result?.rotationDegrees);
+  const rotationDegrees = Number.isFinite(rawRotation)
+    ? (((Math.round(rawRotation / 90) * 90) % 360) + 360) % 360
+    : 0;
+
+  const quality = cleanText(result?.imageQuality).toLowerCase();
+  const isDryingReport = result?.isDryingReport === true || result?.isDryingReport === 'true';
+
+  return {
+    isDryingReport,
+    // ถ้าไม่ใช่รายงาน ไม่ต้องหมุนภาพ
+    rotationDegrees: isDryingReport ? rotationDegrees : 0,
+    reportDate: dashToBlank(result?.reportDate),
+    imageQuality: IMAGE_QUALITIES.includes(quality) ? quality : 'unknown',
+  };
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -469,9 +572,28 @@ export default {
         throw new Error('ไม่พบข้อมูลรูปภาพ imageBase64');
       }
 
+      // โหมด precheck: คำถามสั้นๆ ครั้งเดียว ไม่แตะการอ่านรายงานเต็ม
+      if (body?.mode === 'precheck') {
+        const precheck = await callGemini({
+          apiKey: env.GEMINI_API_KEY,
+          models: getPrecheckModels(env),
+          imageBase64,
+          systemInstruction: PRECHECK_SYSTEM,
+          prompt: PRECHECK_PROMPT,
+          maxOutputTokens: 2048,
+        });
+
+        return jsonResponse({
+          ...normalizePrecheckResult(precheck.data),
+          modelUsed: precheck.model,
+          mode: 'precheck',
+        });
+      }
+
       // รอบหลัก: ตัวเลข ชนิดแป้ง และ Remark
       const mainPass = await callGemini({
         apiKey: env.GEMINI_API_KEY,
+        models: getModels(env),
         imageBase64,
         systemInstruction: MAIN_SYSTEM,
         prompt: MAIN_PROMPT,
@@ -480,8 +602,10 @@ export default {
       let normalized = normalizeMainResult(mainPass.data);
 
       // รอบเครื่องหมาย: แยกออกจากตัวเลขเพื่อลดการรบกวนสายตา
+      // เริ่มจากรุ่นที่ใช้ได้ในรอบแรก
       const markPass = await callGemini({
         apiKey: env.GEMINI_API_KEY,
+        models: getModels(env, mainPass.model),
         imageBase64,
         systemInstruction: MARK_SYSTEM,
         prompt: MARK_PROMPT,
@@ -499,7 +623,7 @@ export default {
         ...normalized,
         modelUsed: mainPass.model,
         markModelUsed: markPass.model,
-        ocrMode: 'full-image-no-ink-dash-v19',
+        ocrMode: 'full-image-no-ink-dash-v21',
         warnings,
       });
     } catch (error) {

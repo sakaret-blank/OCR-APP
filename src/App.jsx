@@ -20,6 +20,7 @@ import {
   Printer,
   Pencil,
   RotateCcw,
+  RotateCw,
   Save,
   ScanLine,
   Sparkles,
@@ -59,31 +60,81 @@ try {
   }
 };
 
-// บีบอัดรูปภาพก่อนส่ง API
-const compressImage = (file, maxWidth = 2400) => {
+// โหลดไฟล์รูปเป็น Image object
+const loadImageFromFile = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
+    reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์รูปภาพได้'));
     reader.onload = (event) => {
       const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('ไม่สามารถเปิดไฟล์รูปภาพได้'));
       img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ratio = maxWidth / img.width;
-        const width = img.width > maxWidth ? maxWidth : img.width;
-        const height = img.width > maxWidth ? img.height * ratio : img.height;
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        const base64String = canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
-        resolve(base64String);
-      };
     };
-    reader.onerror = (error) => reject(error);
+    reader.readAsDataURL(file);
   });
+};
+
+// ปรับมุมหมุนให้เป็น 0 / 90 / 180 / 270 (ตามเข็มนาฬิกา)
+const normalizeRotation = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return (((Math.round(number / 90) * 90) % 360) + 360) % 360;
+};
+
+// วาดรูปลง canvas พร้อมหมุนตามเข็มนาฬิกา แล้วคืนเป็น data URL แบบ JPEG
+// maxWidth จำกัดความกว้าง "หลังหมุนแล้ว"
+const renderRotatedJpeg = (img, rotation = 0, maxWidth = 2400, quality = 0.88) => {
+  const degrees = normalizeRotation(rotation);
+  const swapped = degrees === 90 || degrees === 270;
+  const rotatedWidth = swapped ? img.height : img.width;
+  const rotatedHeight = swapped ? img.width : img.height;
+  const scale = rotatedWidth > maxWidth ? maxWidth / rotatedWidth : 1;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(rotatedWidth * scale);
+  canvas.height = Math.round(rotatedHeight * scale);
+
+  const drawWidth = img.width * scale;
+  const drawHeight = img.height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((degrees * Math.PI) / 180);
+  ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
+  return canvas.toDataURL('image/jpeg', quality);
+};
+
+// บีบอัดรูปภาพ (และหมุนตามที่ระบุ) ก่อนส่ง API
+const compressImage = async (file, maxWidth = 2400, rotation = 0) => {
+  const img = await loadImageFromFile(file);
+  return renderRotatedJpeg(img, rotation, maxWidth).split(',')[1];
+};
+
+// ขอให้ Worker ตรวจทิศทางภาพ (โหมด precheck) ใช้เฉพาะภาพแนวตั้งเพื่อประหยัดโควตา
+// ฟอร์มนี้เป็นแนวนอน ภาพแนวตั้งจึงมักหมุนมา 90°
+const requestOrientationCheck = async (file) => {
+  const img = await loadImageFromFile(file);
+  if (img.height <= img.width) return { checked: false };
+
+  const imageBase64 = renderRotatedJpeg(img, 0, 1200, 0.8).split(',')[1];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const response = await fetch(WORKER_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'precheck', imageBase64 }),
+      signal: controller.signal,
+    });
+    const responseText = await response.text();
+    const result = parseSafeJson(responseText);
+    if (!response.ok) throw new Error(result.error || `HTTP Error ${response.status}`);
+    return { checked: true, ...result };
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 const generateEmptyData = () => {
@@ -602,10 +653,30 @@ export default function App() {
   const [summaryGeneratedAt, setSummaryGeneratedAt] = useState('');
   const [summaryNeedsRefresh, setSummaryNeedsRefresh] = useState(false);
 
-  const [imageSrc, setImageSrc] = useState(null); 
+  const [imageSrc, setImageSrc] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [imageRotation, setImageRotation] = useState(0);
+  const [previewSrc, setPreviewSrc] = useState(null);
+  const [orientationChecking, setOrientationChecking] = useState(false);
+  const orientationRunRef = useRef(0);
   const fileInputRef = useRef(null);
   const jsonImportRef = useRef(null);
+
+  // สร้างภาพตัวอย่างตามมุมหมุนปัจจุบัน เพื่อให้สิ่งที่เห็นตรงกับสิ่งที่ส่งสแกน
+  useEffect(() => {
+    if (!selectedFile) return undefined;
+    let cancelled = false;
+    loadImageFromFile(selectedFile)
+      .then((img) => {
+        if (!cancelled) setPreviewSrc(renderRotatedJpeg(img, imageRotation, 1400, 0.85));
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewSrc(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile, imageRotation]);
 
   useEffect(() => {
     try {
@@ -701,14 +772,51 @@ export default function App() {
     setTimeout(() => setStatusMessage(''), 3000);
   };
 
+  // ตรวจทิศทางภาพอัตโนมัติ (เฉพาะภาพแนวตั้ง) แล้วตั้งมุมหมุนให้ ผู้ใช้ปรับเองได้ตลอด
+  const runOrientationCheck = async (file) => {
+    const runId = orientationRunRef.current + 1;
+    orientationRunRef.current = runId;
+    setOrientationChecking(true);
+    try {
+      const result = await requestOrientationCheck(file);
+      if (runId !== orientationRunRef.current || !result.checked) return;
+
+      const degrees = normalizeRotation(result.rotationDegrees);
+      setImageRotation(degrees);
+      if (result.isDryingReport === false) {
+        setStatusMessage('⚠️ รูปนี้อาจไม่ใช่ Drying Process Operation Report กรุณาตรวจสอบก่อนสแกน');
+      } else if (degrees !== 0) {
+        setStatusMessage(`ตรวจพบภาพหมุน และหมุนให้อัตโนมัติแล้ว (${degrees}° ตามเข็มนาฬิกา) ปรับเองได้ที่ปุ่มหมุนในรูปอ้างอิง`);
+      }
+    } catch (error) {
+      if (runId !== orientationRunRef.current) return;
+      console.warn('ตรวจทิศทางภาพอัตโนมัติไม่สำเร็จ:', error);
+      setStatusMessage('ตรวจทิศทางภาพอัตโนมัติไม่สำเร็จ กรุณาดูรูปอ้างอิงและหมุนเองหากจำเป็น');
+    } finally {
+      if (runId === orientationRunRef.current) setOrientationChecking(false);
+    }
+  };
+
+  const rotateImage = (delta) => {
+    // ผู้ใช้ปรับเอง: ยกเลิกผลตรวจอัตโนมัติที่ยังค้างอยู่ ไม่ให้มาทับภายหลัง
+    orientationRunRef.current += 1;
+    setOrientationChecking(false);
+    setStatusMessage('');
+    setImageRotation((current) => normalizeRotation(current + delta));
+  };
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
       setSelectedFile(file);
+      setImageRotation(0);
+      setPreviewSrc(null);
+      setStatusMessage('');
       const url = URL.createObjectURL(file);
       setImageSrc(url);
       setShowImagePane(true);
       setAppState('uploaded');
+      runOrientationCheck(file);
       setData(generateEmptyData());
       setDocInfo({ date: normalizeReportDateDisplay(new Date().toLocaleDateString('th-TH')), code: 'FM-PD-010 Rev.1' });
       setReportDateRaw('');
@@ -723,11 +831,12 @@ export default function App() {
   };
 
   const handleScanDocument = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || orientationChecking) return;
+    setStatusMessage('');
     setAppState('scanning');
-    
+
     try {
-      const base64Image = await compressImage(selectedFile);
+      const base64Image = await compressImage(selectedFile, 2400, imageRotation);
       const response = await fetch(WORKER_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1383,8 +1492,14 @@ export default function App() {
             <input type="file" accept=".json" ref={jsonImportRef} onChange={handleImportJSON} className="hidden" />
             
             {appState === 'uploaded' ? (
-              <button onClick={handleScanDocument} className="px-3 py-1.5 bg-emerald-600 rounded-lg text-white hover:bg-emerald-700 flex items-center text-xs font-bold shadow-md animate-pulse">
-                <ScanLine className="w-4 h-4 mr-1" /> เริ่มสแกน
+              <button
+                onClick={handleScanDocument}
+                disabled={orientationChecking}
+                className={`px-3 py-1.5 bg-emerald-600 rounded-lg text-white hover:bg-emerald-700 flex items-center text-xs font-bold shadow-md ${orientationChecking ? 'opacity-70 cursor-wait' : 'animate-pulse'}`}
+              >
+                {orientationChecking
+                  ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> กำลังตรวจทิศทางภาพ...</>
+                  : <><ScanLine className="w-4 h-4 mr-1" /> เริ่มสแกน</>}
               </button>
             ) : (
               <button onClick={triggerFileInput} className="px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-700 hover:bg-indigo-100 flex items-center text-xs font-semibold">
@@ -1405,13 +1520,25 @@ export default function App() {
           {showImagePane && imageSrc && (
             <div className="w-full lg:w-1/3 bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-700 flex flex-col shrink-0 relative transition-all">
               <div className="p-2 bg-slate-800 text-white text-xs flex justify-between items-center font-semibold border-b border-slate-700">
-                <span>เอกสารอ้างอิง</span>
-                <button onClick={() => setShowImagePane(false)} className="text-slate-400 hover:text-white p-1">
-                  <X className="w-4 h-4" />
-                </button>
+                <span>เอกสารอ้างอิง{imageRotation !== 0 ? ` (หมุน ${imageRotation}°)` : ''}</span>
+                <div className="flex items-center gap-1">
+                  {appState === 'uploaded' && (
+                    <>
+                      <button type="button" onClick={() => rotateImage(-90)} title="หมุนซ้าย 90°" className="text-slate-300 hover:text-white px-1.5 py-1 flex items-center gap-1 rounded hover:bg-slate-700">
+                        <RotateCcw className="w-4 h-4" /> หมุนซ้าย
+                      </button>
+                      <button type="button" onClick={() => rotateImage(90)} title="หมุนขวา 90°" className="text-slate-300 hover:text-white px-1.5 py-1 flex items-center gap-1 rounded hover:bg-slate-700">
+                        <RotateCw className="w-4 h-4" /> หมุนขวา
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => setShowImagePane(false)} className="text-slate-400 hover:text-white p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-auto p-3 flex items-center justify-center">
-                <img src={imageSrc} alt="Document" className="max-w-full h-auto max-h-full object-contain rounded shadow-lg border border-slate-700" />
+                <img src={previewSrc || imageSrc} alt="Document" className="max-w-full h-auto max-h-full object-contain rounded shadow-lg border border-slate-700" />
               </div>
             </div>
           )}
